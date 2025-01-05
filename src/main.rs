@@ -1,6 +1,10 @@
+mod fim;
+mod mistral;
+
 use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
 use anyhow::Result;
+use fim::Fim;
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{
   notification::{Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification},
@@ -9,8 +13,8 @@ use lsp_types::{
   InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, NumberOrString, OneOf, Range,
   ServerCapabilities, TextDocumentSyncKind, Uri,
 };
+use mistral::fim::MistralFim;
 use ropey::Rope;
-use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Default)]
@@ -19,47 +23,24 @@ struct State {
   tasks: Arc<papaya::HashMap<RequestId, JoinHandle<()>>>,
 }
 
-#[derive(Clone, PartialEq, Debug, Serialize)]
-struct FimRequest {
-  model: String,
-  prompt: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  suffix: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  temperature: Option<f64>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  top_p: Option<f64>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  max_tokens: Option<u32>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  min_tokens: Option<u32>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  stop: Option<String>, // TODO: array?
-  #[serde(skip_serializing_if = "Option::is_none")]
-  random_seed: Option<u32>,
-}
-
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-struct Message_ {
-  content: String,
-}
-
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-struct Choice {
-  message: Message_,
-}
-
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-struct FimResponse {
-  choices: Vec<Choice>,
-}
-
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
-  let mistral_api_key = Arc::new(env::var("MISTRAL_API_KEY").unwrap());
+  let mistral_api_key = env::var("MISTRAL_API_KEY").unwrap();
+
+  let mistral_fim = Arc::new(MistralFim {
+    url: "https://api.mistral.ai/v1/fim/completions".to_string(),
+    api_key: mistral_api_key,
+    model: "codestral-latest".to_string(),
+    temperature: Some(0.0),
+    top_p: None,
+    max_tokens: Some(256),
+    min_tokens: None,
+    stop: Some("\n\n".to_string()),
+    random_seed: None,
+  });
 
   let (connection, io_threads) = Connection::stdio();
   let server_capabilities = ServerCapabilities {
@@ -90,43 +71,25 @@ async fn main() -> Result<()> {
 
           let index = rope.line_to_char(params.text_document_position.position.line as usize)
             + params.text_document_position.position.character as usize;
-          let prompt = rope.slice(0..index).to_string();
+          let prefix = rope.slice(0..index).to_string();
           let suffix = rope.slice(index..rope.len_chars()).to_string();
 
-          let mistral_api_key = mistral_api_key.clone();
+          let mistral_fim = mistral_fim.clone();
           let client = client.clone();
           let sender = sender.clone();
           let tasks = state.tasks.clone();
           let request_id_c = request_id.clone();
           let future = async move {
-            let response = client
-              .post("https://api.mistral.ai/v1/fim/completions")
-              .bearer_auth(mistral_api_key)
-              .json(&FimRequest {
-                model: "codestral-latest".to_string(),
-                prompt,
-                suffix: Some(suffix),
-                temperature: Some(0.0),
-                top_p: None,
-                max_tokens: Some(128),
-                min_tokens: None,
-                stop: Some("\n\n".to_string()),
-                random_seed: None,
-              })
-              .send()
-              .await;
-            match response {
-              Result::Ok(response) => {
-                let response: FimResponse = response.json().await.unwrap(); // TODO
+            let completions = mistral_fim.fim(client, prefix, suffix).await;
+            match completions {
+              Result::Ok(completions) => {
                 let range = Range::new(
                   params.text_document_position.position,
                   params.text_document_position.position,
                 );
-                let completion_items = response
-                  .choices
-                  .into_iter()
-                  .map(|choice| InlineCompletionItem {
-                    insert_text: choice.message.content,
+                let completion_items = completions
+                  .map(|completion| InlineCompletionItem {
+                    insert_text: completion,
                     filter_text: None,
                     range: Some(range),
                     command: None,
