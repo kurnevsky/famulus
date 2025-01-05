@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::BufReader, sync::Arc};
+use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
 use anyhow::Result;
 use lsp_server::{Connection, Message, RequestId, Response};
@@ -59,6 +59,8 @@ async fn main() -> Result<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
 
+  let mistral_api_key = Arc::new(env::var("MISTRAL_API_KEY").unwrap());
+
   let (connection, io_threads) = Connection::stdio();
   let server_capabilities = ServerCapabilities {
     inline_completion_provider: Some(OneOf::Left(true)),
@@ -91,6 +93,7 @@ async fn main() -> Result<()> {
           let prompt = rope.slice(0..index).to_string();
           let suffix = rope.slice(index..rope.len_chars()).to_string();
 
+          let mistral_api_key = mistral_api_key.clone();
           let client = client.clone();
           let sender = sender.clone();
           let tasks = state.tasks.clone();
@@ -98,16 +101,16 @@ async fn main() -> Result<()> {
           let future = async move {
             let response = client
               .post("https://api.mistral.ai/v1/fim/completions")
-              .bearer_auth("")
+              .bearer_auth(mistral_api_key)
               .json(&FimRequest {
                 model: "codestral-latest".to_string(),
                 prompt,
                 suffix: Some(suffix),
                 temperature: Some(0.0),
                 top_p: None,
-                max_tokens: None,
+                max_tokens: Some(128),
                 min_tokens: None,
-                stop: None,
+                stop: Some("\n\n".to_string()),
                 random_seed: None,
               })
               .send()
