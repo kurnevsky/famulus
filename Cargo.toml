@@ -1,0 +1,20 @@
+[package]
+name = "famulus"
+version = "0.0.1"
+authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
+license = "AGPL-3.0+"
+description = "LSP LLM"
+edition = "2021"
+
+[dependencies]
+lsp-server = "0.7"
+lsp-types = { version = "0.97", features = ["proposed"] }
+serde_json = "1.0"
+anyhow = "1.0"
+ropey = "1.6"
+serde = "1.0"
+reqwest = { version = "0.12", default-features = false, features = [  "http2", "charset", "json", "rustls-tls", "rustls-tls-native-roots" ] }
+tokio = "1.42"
+log = "0.4"
+env_logger = "0.11"
+papaya = "0.1"
