@@ -14,7 +14,7 @@ anyhow = "1.0"
 ropey = "1.6"
 serde = "1.0"
 reqwest = { version = "0.12", default-features = false, features = [  "http2", "charset", "json", "rustls-tls", "rustls-tls-native-roots" ] }
-tokio = "1.42"
+tokio = { version = "1.42", features = [ "rt", "rt-multi-thread", "macros" ] }
 log = "0.4"
 env_logger = "0.11"
 papaya = "0.1"
