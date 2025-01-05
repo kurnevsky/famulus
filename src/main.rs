@@ -4,6 +4,7 @@ mod mistral;
 use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
 use anyhow::Result;
+use clap::Command;
 use fim::Fim;
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{
@@ -27,6 +28,12 @@ struct State {
 async fn main() -> Result<()> {
   let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
   env_logger::Builder::from_env(env).init();
+
+  let _matches = Command::new(clap::crate_name!())
+    .version(clap::crate_version!())
+    .author(clap::crate_authors!("\n"))
+    .about(clap::crate_description!())
+    .get_matches();
 
   let mistral_api_key = env::var("MISTRAL_API_KEY").unwrap();
 
@@ -106,7 +113,7 @@ async fn main() -> Result<()> {
               }
               Result::Err(error) => {
                 tasks.pin().remove(&request_id_c);
-                log::warn!("Failed to get mistral response: {}", error);
+                log::warn!("Failed to get response: {}", error);
               }
             }
           };
