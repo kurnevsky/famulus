@@ -7,6 +7,10 @@ description = "LSP server integrating LLMs"
 keywords = ["lsp", "llm", "ai"]
 repository = "https://github.com/kurnevsky/famulus"
 edition = "2021"
+include = [
+  "**/*.rs",
+  "Cargo.toml",
+]
 
 [dependencies]
 lsp-server = "0.7"
