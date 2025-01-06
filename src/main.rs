@@ -92,6 +92,7 @@ async fn main() -> Result<()> {
                   params.text_document_position.position,
                 );
                 let completion_items = completions
+                  .filter(|completion| !completion.is_empty())
                   .map(|completion| InlineCompletionItem {
                     insert_text: completion,
                     filter_text: None,
