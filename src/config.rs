@@ -81,7 +81,7 @@ mod tests {
       "infill": {
         "privider": "LlamaCpp",
         "config": {
-          "url": "http://localhost:8080/v1/infill",
+          "url": "http://localhost:8080/infill",
           "stop": ["<|file_separator|>"]
         }
       }
@@ -89,7 +89,7 @@ mod tests {
     "#;
     let config = Config {
       infill: CompletionConfig::LlamaCpp(LlamaCppInfillConfig {
-        url: "http://localhost:8080/v1/infill".to_string(),
+        url: "http://localhost:8080/infill".to_string(),
         stop: vec!["<|file_separator|>".to_string()],
       }),
     };
