@@ -18,7 +18,12 @@ struct InfillResponse {
   content: String,
 }
 
-// curl -XPOST "localhost:8081/infill" -d '{"input_prefix": "1, ", "input_suffix": ", 5", "stop": ["<|file_separator|>"]}' -H "Content-Type: application/json"
+#[derive(Clone, PartialEq, Debug, Deserialize)]
+pub struct LlamaCppFimConfig {
+  pub url: String,
+  pub stop: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlamaCppFim {
   pub url: String,

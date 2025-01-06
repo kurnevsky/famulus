@@ -1,3 +1,4 @@
+mod config;
 mod fim;
 mod llama_cpp;
 mod mistral;
@@ -15,7 +16,7 @@ use lsp_types::{
   InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, NumberOrString, OneOf, Range,
   ServerCapabilities, TextDocumentSyncKind, Uri,
 };
-use mistral::fim::MistralFim;
+use mistral::fim::{MistralFim, MistralFimConfig};
 use ropey::Rope;
 use tokio::task::JoinHandle;
 
@@ -39,15 +40,17 @@ async fn main() -> Result<()> {
   let mistral_api_key = env::var("MISTRAL_API_KEY").unwrap();
 
   let mistral_fim = Arc::new(MistralFim {
-    url: "https://api.mistral.ai/v1/fim/completions".to_string(),
     api_key: mistral_api_key,
-    model: "codestral-latest".to_string(),
-    temperature: Some(0.0),
-    top_p: None,
-    max_tokens: Some(256),
-    min_tokens: None,
-    stop: vec!["\n\n".to_string()],
-    random_seed: None,
+    config: MistralFimConfig {
+      url: "https://api.mistral.ai/v1/fim/completions".to_string(),
+      model: "codestral-latest".to_string(),
+      temperature: Some(0.0),
+      top_p: None,
+      max_tokens: Some(256),
+      min_tokens: None,
+      stop: vec!["\n\n".to_string()],
+      random_seed: None,
+    },
   });
 
   let (connection, io_threads) = Connection::stdio();
