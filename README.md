@@ -40,7 +40,10 @@ The configuration options for each provider are as follows:
     "provider": "LlamaCpp",
     "config": {
       "url": "http://localhost:8080/infill",
-      "stop": ["<|file_separator|>"]
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "stop": ["<|file_separator|>"],
+      "seed": 42
     }
   }
 }
@@ -52,6 +55,8 @@ using the following command:
 ```sh
 llama-server -m codegemma-2b-Q6_K.gguf -c 0 -t 8 -ngl 19 -fa --port 8080
 ```
+
+API key can be specified via `LLAMA_CPP_API_KEY` environment variable.
 
 ### Mistral
 
@@ -72,6 +77,8 @@ llama-server -m codegemma-2b-Q6_K.gguf -c 0 -t 8 -ngl 19 -fa --port 8080
   }
 }
 ```
+
+API key can be specified via `MISTRAL_API_KEY` environment variable.
 
 ## Contributing
 
