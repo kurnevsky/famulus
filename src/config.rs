@@ -28,7 +28,10 @@ impl Config {
         api_key: env::var("MISTRAL_API_KEY").unwrap(),
         config: config.clone(),
       }),
-      CompletionConfig::LlamaCpp(config) => Either::Right(LlamaCppInfill { config: config.clone() }),
+      CompletionConfig::LlamaCpp(config) => Either::Right(LlamaCppInfill {
+        api_key: env::var("LLAMA_CPP_API_KEY").ok(),
+        config: config.clone(),
+      }),
     }
   }
 }

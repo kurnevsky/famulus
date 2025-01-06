@@ -26,13 +26,19 @@ pub struct LlamaCppInfillConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlamaCppInfill {
+  pub api_key: Option<String>,
   pub config: LlamaCppInfillConfig,
 }
 
 impl Infill for LlamaCppInfill {
   async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
-    let response = client
-      .post(&self.config.url)
+    let request = client.post(&self.config.url);
+    let request = if let Some(ref api_key) = self.api_key {
+      request.bearer_auth(api_key)
+    } else {
+      request
+    };
+    let response = request
       .json(&InfillRequest {
         input_prefix: prefix,
         input_suffix: suffix,
