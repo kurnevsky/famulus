@@ -11,8 +11,8 @@ use config::Config;
 use infill::Infill;
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{
-  notification::{Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification},
-  request::{InlineCompletionRequest, Request, Shutdown},
+  notification::{Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Exit, Notification},
+  request::{InlineCompletionRequest, Request},
   CancelParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
   InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, NumberOrString, OneOf, Range,
   ServerCapabilities, TextDocumentSyncKind, Uri,
@@ -66,9 +66,7 @@ async fn main() -> Result<()> {
   for msg in &connection.receiver {
     match msg {
       Message::Request(request) => {
-        if request.method == Shutdown::METHOD {
-          return Ok(());
-        } else if request.method == InlineCompletionRequest::METHOD {
+        if request.method == InlineCompletionRequest::METHOD {
           let (request_id, params) = request.extract::<InlineCompletionParams>(InlineCompletionRequest::METHOD)?;
           let rope = state
             .documents
@@ -156,6 +154,8 @@ async fn main() -> Result<()> {
           if let Some(handle) = state.tasks.pin().remove(&id) {
             handle.abort();
           }
+        } else if notification.method == Exit::METHOD {
+          return Ok(());
         }
       }
       _ => {}
