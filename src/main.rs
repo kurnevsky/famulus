@@ -7,6 +7,7 @@ use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
 use anyhow::Result;
 use clap::Command;
+use config::Config;
 use infill::Infill;
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{
@@ -16,7 +17,6 @@ use lsp_types::{
   InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, NumberOrString, OneOf, Range,
   ServerCapabilities, TextDocumentSyncKind, Uri,
 };
-use mistral::infill::{MistralInfill, MistralInfillConfig};
 use ropey::Rope;
 use tokio::task::JoinHandle;
 
@@ -37,22 +37,6 @@ async fn main() -> Result<()> {
     .about(clap::crate_description!())
     .get_matches();
 
-  let mistral_api_key = env::var("MISTRAL_API_KEY").unwrap();
-
-  let mistral_infill = Arc::new(MistralInfill {
-    api_key: mistral_api_key,
-    config: MistralInfillConfig {
-      url: "https://api.mistral.ai/v1/fim/completions".to_string(),
-      model: "codestral-latest".to_string(),
-      temperature: Some(0.0),
-      top_p: None,
-      max_tokens: Some(256),
-      min_tokens: None,
-      stop: vec!["\n\n".to_string()],
-      random_seed: None,
-    },
-  });
-
   let (connection, io_threads) = Connection::stdio();
   let server_capabilities = ServerCapabilities {
     inline_completion_provider: Some(OneOf::Left(true)),
@@ -61,7 +45,10 @@ async fn main() -> Result<()> {
     )),
     ..Default::default()
   };
-  let _initialization_args = connection.initialize(serde_json::to_value(server_capabilities)?)?;
+  let initialization_args = connection.initialize(serde_json::to_value(server_capabilities)?)?;
+
+  let config: Config = serde_json::from_value(initialization_args)?;
+  let infill = config.get_infill();
 
   let sender = Arc::new(connection.sender);
   let client = Arc::new(reqwest::Client::new());
@@ -85,7 +72,7 @@ async fn main() -> Result<()> {
           let prefix = rope.slice(0..index).to_string();
           let suffix = rope.slice(index..rope.len_chars()).to_string();
 
-          let mistral_infill = mistral_infill.clone();
+          let mistral_infill = infill.clone();
           let client = client.clone();
           let sender = sender.clone();
           let tasks = state.tasks.clone();

@@ -1,6 +1,13 @@
+use std::env;
+
+use either::Either;
 use serde::Deserialize;
 
-use crate::{llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig};
+use crate::{
+  infill::Infill,
+  llama_cpp::infill::{LlamaCppInfill, LlamaCppInfillConfig},
+  mistral::infill::{MistralInfill, MistralInfillConfig},
+};
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 #[serde(tag = "privider", content = "config")]
@@ -12,6 +19,18 @@ pub enum CompletionConfig {
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Config {
   infill: CompletionConfig,
+}
+
+impl Config {
+  pub fn get_infill(&self) -> impl Infill + Clone + Send {
+    match &self.infill {
+      CompletionConfig::Mistral(config) => Either::Left(MistralInfill {
+        api_key: env::var("MISTRAL_API_KEY").unwrap(),
+        config: config.clone(),
+      }),
+      CompletionConfig::LlamaCpp(config) => Either::Right(LlamaCppInfill { config: config.clone() }),
+    }
+  }
 }
 
 #[cfg(test)]

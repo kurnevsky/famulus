@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -58,12 +59,7 @@ pub struct MistralInfill {
 }
 
 impl Infill for MistralInfill {
-  async fn infill(
-    &self,
-    client: Arc<Client>,
-    prefix: String,
-    suffix: String,
-  ) -> anyhow::Result<impl Iterator<Item = String>> {
+  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
     let response = client
       .post(&self.config.url)
       .bearer_auth(&self.api_key)

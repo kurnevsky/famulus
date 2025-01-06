@@ -26,18 +26,17 @@ pub struct LlamaCppInfillConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlamaCppInfill {
-  pub url: String,
-  pub stop: Vec<String>,
+  pub config: LlamaCppInfillConfig,
 }
 
 impl Infill for LlamaCppInfill {
   async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
     let response = client
-      .post(&self.url)
+      .post(&self.config.url)
       .json(&InfillRequest {
         input_prefix: prefix,
         input_suffix: suffix,
-        stop: &self.stop,
+        stop: &self.config.stop,
       })
       .send()
       .await?
