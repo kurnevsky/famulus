@@ -18,6 +18,7 @@ use lsp_types::{
   ServerCapabilities, TextDocumentSyncKind, Uri,
 };
 use ropey::Rope;
+use serde::Deserialize;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Default)]
@@ -47,7 +48,14 @@ async fn main() -> Result<()> {
   };
   let initialization_args = connection.initialize(serde_json::to_value(server_capabilities)?)?;
 
-  let config: Config = serde_json::from_value(initialization_args)?;
+  let config = {
+    #[derive(Clone, PartialEq, Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct InitializationArgs {
+      initialization_options: Config,
+    }
+    serde_json::from_value::<InitializationArgs>(initialization_args)?.initialization_options
+  };
   let infill = config.get_infill();
 
   let sender = Arc::new(connection.sender);
