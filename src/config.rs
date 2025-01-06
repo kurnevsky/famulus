@@ -85,7 +85,10 @@ mod tests {
         "privider": "LlamaCpp",
         "config": {
           "url": "http://localhost:8080/infill",
-          "stop": ["<|file_separator|>"]
+          "temperature": 0.7,
+          "max_tokens": 1024,
+          "stop": ["<|file_separator|>"],
+          "seed": 42
         }
       }
     }
@@ -93,7 +96,10 @@ mod tests {
     let config = Config {
       infill: CompletionConfig::LlamaCpp(LlamaCppInfillConfig {
         url: "http://localhost:8080/infill".to_string(),
+        temperature: Some(0.7),
+        max_tokens: Some(1024),
         stop: vec!["<|file_separator|>".to_string()],
+        seed: Some(42),
       }),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();

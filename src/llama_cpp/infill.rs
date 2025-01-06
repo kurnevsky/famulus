@@ -21,7 +21,13 @@ struct InfillResponse {
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct LlamaCppInfillConfig {
   pub url: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub temperature: Option<f64>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub max_tokens: Option<u32>,
   pub stop: Vec<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub seed: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
