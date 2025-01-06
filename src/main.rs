@@ -1,4 +1,5 @@
 mod fim;
+mod llama_cpp;
 mod mistral;
 
 use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
@@ -45,7 +46,7 @@ async fn main() -> Result<()> {
     top_p: None,
     max_tokens: Some(256),
     min_tokens: None,
-    stop: Some("\n\n".to_string()),
+    stop: vec!["\n\n".to_string()],
     random_seed: None,
   });
 

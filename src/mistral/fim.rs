@@ -19,8 +19,7 @@ struct FimRequest<'a> {
   max_tokens: Option<u32>,
   #[serde(skip_serializing_if = "Option::is_none")]
   min_tokens: Option<u32>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  stop: Option<&'a str>,
+  stop: &'a Vec<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   random_seed: Option<u32>,
 }
@@ -40,7 +39,7 @@ struct FimResponse {
   choices: Vec<Choice>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MistralFim {
   pub url: String,
   pub api_key: String,
@@ -49,7 +48,7 @@ pub struct MistralFim {
   pub top_p: Option<f64>,
   pub max_tokens: Option<u32>,
   pub min_tokens: Option<u32>,
-  pub stop: Option<String>, // TODO: array?
+  pub stop: Vec<String>,
   pub random_seed: Option<u32>,
 }
 
@@ -71,7 +70,7 @@ impl Fim for MistralFim {
         top_p: self.top_p,
         max_tokens: self.max_tokens,
         min_tokens: self.min_tokens,
-        stop: self.stop.as_deref(),
+        stop: &self.stop,
         random_seed: self.random_seed,
       })
       .send()
