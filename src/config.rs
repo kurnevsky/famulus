@@ -1,30 +1,30 @@
 use serde::Deserialize;
 
-use crate::{llama_cpp::fim::LlamaCppFimConfig, mistral::fim::MistralFimConfig};
+use crate::{llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig};
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 #[serde(tag = "privider", content = "config")]
 pub enum CompletionConfig {
-  Mistral(MistralFimConfig),
-  LlamaCpp(LlamaCppFimConfig),
+  Mistral(MistralInfillConfig),
+  LlamaCpp(LlamaCppInfillConfig),
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Config {
-  completion: CompletionConfig,
+  infill: CompletionConfig,
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::{llama_cpp::fim::LlamaCppFimConfig, mistral::fim::MistralFimConfig};
+  use crate::{llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig};
 
-  use super::Config;
+  use super::{CompletionConfig, Config};
 
   #[test]
   fn mistral_config() {
     let str = r#"
     {
-      "completion": {
+      "infill": {
         "privider": "Mistral",
         "config": {
           "url": "https://api.mistral.ai/v1/fim/completions",
@@ -40,7 +40,7 @@ mod tests {
     }
     "#;
     let config = Config {
-      completion: super::CompletionConfig::Mistral(MistralFimConfig {
+      infill: CompletionConfig::Mistral(MistralInfillConfig {
         url: "https://api.mistral.ai/v1/fim/completions".to_string(),
         model: "codestral-latest".to_string(),
         temperature: Some(0.7),
@@ -59,7 +59,7 @@ mod tests {
   fn llama_cpp_config() {
     let str = r#"
     {
-      "completion": {
+      "infill": {
         "privider": "LlamaCpp",
         "config": {
           "url": "http://localhost:8080/v1/infill",
@@ -69,7 +69,7 @@ mod tests {
     }
     "#;
     let config = Config {
-      completion: super::CompletionConfig::LlamaCpp(LlamaCppFimConfig {
+      infill: CompletionConfig::LlamaCpp(LlamaCppInfillConfig {
         url: "http://localhost:8080/v1/infill".to_string(),
         stop: vec!["<|file_separator|>".to_string()],
       }),

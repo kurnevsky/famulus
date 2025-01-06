@@ -1,5 +1,5 @@
 mod config;
-mod fim;
+mod infill;
 mod llama_cpp;
 mod mistral;
 
@@ -7,7 +7,7 @@ use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
 use anyhow::Result;
 use clap::Command;
-use fim::Fim;
+use infill::Infill;
 use lsp_server::{Connection, Message, RequestId, Response};
 use lsp_types::{
   notification::{Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification},
@@ -16,7 +16,7 @@ use lsp_types::{
   InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, NumberOrString, OneOf, Range,
   ServerCapabilities, TextDocumentSyncKind, Uri,
 };
-use mistral::fim::{MistralFim, MistralFimConfig};
+use mistral::infill::{MistralInfill, MistralInfillConfig};
 use ropey::Rope;
 use tokio::task::JoinHandle;
 
@@ -39,9 +39,9 @@ async fn main() -> Result<()> {
 
   let mistral_api_key = env::var("MISTRAL_API_KEY").unwrap();
 
-  let mistral_fim = Arc::new(MistralFim {
+  let mistral_infill = Arc::new(MistralInfill {
     api_key: mistral_api_key,
-    config: MistralFimConfig {
+    config: MistralInfillConfig {
       url: "https://api.mistral.ai/v1/fim/completions".to_string(),
       model: "codestral-latest".to_string(),
       temperature: Some(0.0),
@@ -85,13 +85,13 @@ async fn main() -> Result<()> {
           let prefix = rope.slice(0..index).to_string();
           let suffix = rope.slice(index..rope.len_chars()).to_string();
 
-          let mistral_fim = mistral_fim.clone();
+          let mistral_infill = mistral_infill.clone();
           let client = client.clone();
           let sender = sender.clone();
           let tasks = state.tasks.clone();
           let request_id_c = request_id.clone();
           let future = async move {
-            let completions = mistral_fim.fim(client, prefix, suffix).await;
+            let completions = mistral_infill.infill(client, prefix, suffix).await;
             match completions {
               Result::Ok(completions) => {
                 let range = Range::new(

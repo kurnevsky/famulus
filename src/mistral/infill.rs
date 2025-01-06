@@ -3,10 +3,10 @@ use std::sync::Arc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::fim::Fim;
+use crate::infill::Infill;
 
 #[derive(Clone, PartialEq, Debug, Serialize)]
-struct FimRequest<'a> {
+struct InfillRequest<'a> {
   model: &'a str,
   prompt: String,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -35,12 +35,12 @@ struct Choice {
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
-struct FimResponse {
+struct InfillResponse {
   choices: Vec<Choice>,
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
-pub struct MistralFimConfig {
+pub struct MistralInfillConfig {
   pub url: String,
   pub model: String,
   pub temperature: Option<f64>,
@@ -52,13 +52,13 @@ pub struct MistralFimConfig {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MistralFim {
+pub struct MistralInfill {
   pub api_key: String,
-  pub config: MistralFimConfig,
+  pub config: MistralInfillConfig,
 }
 
-impl Fim for MistralFim {
-  async fn fim(
+impl Infill for MistralInfill {
+  async fn infill(
     &self,
     client: Arc<Client>,
     prefix: String,
@@ -67,7 +67,7 @@ impl Fim for MistralFim {
     let response = client
       .post(&self.config.url)
       .bearer_auth(&self.api_key)
-      .json(&FimRequest {
+      .json(&InfillRequest {
         model: &self.config.model,
         prompt: prefix,
         suffix: Some(suffix),
@@ -80,7 +80,7 @@ impl Fim for MistralFim {
       })
       .send()
       .await?
-      .json::<FimResponse>()
+      .json::<InfillResponse>()
       .await?;
 
     Ok(response.choices.into_iter().map(|choice| choice.message.content))

@@ -4,7 +4,7 @@ use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::fim::Fim;
+use crate::infill::Infill;
 
 #[derive(Clone, PartialEq, Debug, Serialize)]
 struct InfillRequest<'a> {
@@ -19,19 +19,19 @@ struct InfillResponse {
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
-pub struct LlamaCppFimConfig {
+pub struct LlamaCppInfillConfig {
   pub url: String,
   pub stop: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LlamaCppFim {
+pub struct LlamaCppInfill {
   pub url: String,
   pub stop: Vec<String>,
 }
 
-impl Fim for LlamaCppFim {
-  async fn fim(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
+impl Infill for LlamaCppInfill {
+  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
     let response = client
       .post(&self.url)
       .json(&InfillRequest {
