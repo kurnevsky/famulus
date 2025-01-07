@@ -10,7 +10,9 @@ edition = "2021"
 include = [
   "**/*.rs",
   "Cargo.toml",
+  "README.md",
 ]
+readme = "README.md"
 
 [dependencies]
 lsp-server = "0.7"
