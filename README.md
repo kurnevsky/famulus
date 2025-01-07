@@ -4,11 +4,11 @@
 
 ## Introduction
 
-Famulus, derived from the Latin word for "servant" or "apprentice," refers to a
-magical attendant who assists a powerful sorcerer in their spells and
-incantations. As an LSP (Language Server Protocol) server, Famulus is designed
-to integrate Large Language Models (LLMs) for code completions and code actions,
-and will be a trusted companion to help you with your sorcery!
+Famulus, the Latin word for "servant" or "apprentice," refers to a magical
+attendant who assists a powerful sorcerer in their spells and incantations. As
+an LSP (Language Server Protocol) server, Famulus is designed to integrate Large
+Language Models (LLMs) for code completions and code actions, and will be a
+trusted companion to help you with your sorcery!
 
 ## Features
 
