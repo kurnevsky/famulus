@@ -13,8 +13,10 @@ and will be a trusted companion to help you with your sorcery!
 ## Features
 
 - [x] **Inline Code Completions**: Get context-aware code suggestions using LLMs
-  - [x] [llama.cpp](https://github.com/ggerganov/llama.cpp/tree/master/examples/server#post-infill-for-code-infilling)
-  - [x] [Mistral](https://docs.mistral.ai/api/#tag/fim)
+  - [x] [llama.cpp infill API](https://github.com/ggerganov/llama.cpp/tree/master/examples/server#post-infill-for-code-infilling)
+  - [ ] [Ollama completions API](https://github.com/ollama/ollama/blob/v0.5.4/docs/api.md#generate-a-completion)
+  - [x] [Mistral FIM API](https://docs.mistral.ai/api/#tag/fim)
+  - [ ] [OpanAI completions API](https://platform.openai.com/docs/api-reference/completions)
 - [ ] **Code Actions**: Automate routine tasks, such as code refactoring
 
 ## Getting Started
