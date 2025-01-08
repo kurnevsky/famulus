@@ -7,6 +7,7 @@ use crate::{
   infill::Infill,
   llama_cpp::infill::{LlamaCppInfill, LlamaCppInfillConfig},
   mistral::infill::{MistralInfill, MistralInfillConfig},
+  ollama::infill::{OllamaInfill, OllamaInfillConfig},
 };
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
@@ -14,6 +15,7 @@ use crate::{
 pub enum CompletionConfig {
   Mistral(MistralInfillConfig),
   LlamaCpp(LlamaCppInfillConfig),
+  Ollama(OllamaInfillConfig),
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
@@ -22,15 +24,19 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn get_infill(&self) -> impl Infill + Clone + Send {
-    match &self.infill {
-      CompletionConfig::Mistral(config) => Either::Left(MistralInfill {
+  pub fn get_infill(self) -> impl Infill + Clone + Send {
+    match self.infill {
+      CompletionConfig::Mistral(config) => Either::Left(Either::Left(MistralInfill {
         api_key: env::var("MISTRAL_API_KEY").unwrap(),
-        config: config.clone(),
-      }),
-      CompletionConfig::LlamaCpp(config) => Either::Right(LlamaCppInfill {
+        config,
+      })),
+      CompletionConfig::LlamaCpp(config) => Either::Left(Either::Right(LlamaCppInfill {
         api_key: env::var("LLAMA_CPP_API_KEY").ok(),
-        config: config.clone(),
+        config,
+      })),
+      CompletionConfig::Ollama(config) => Either::Right(OllamaInfill {
+        api_key: env::var("OLLAMA_API_KEY").ok(),
+        config,
       }),
     }
   }
@@ -38,7 +44,9 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-  use crate::{llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig};
+  use crate::{
+    llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig, ollama::infill::OllamaInfillConfig,
+  };
 
   use super::{CompletionConfig, Config};
 
@@ -99,6 +107,37 @@ mod tests {
         temperature: Some(0.7),
         max_tokens: Some(1024),
         stop: vec!["<|file_separator|>".to_string()],
+        seed: Some(42),
+      }),
+    };
+    let parsed: Config = serde_json::from_str(str).unwrap();
+    assert_eq!(parsed, config);
+  }
+
+  #[test]
+  fn ollama_config() {
+    let str = r#"
+     {
+       "infill": {
+         "privider": "Ollama",
+         "config": {
+           "url": "http://localhost:11434/api/generate",
+           "model": "qwen2.5-coder",
+           "temperature": 0.7,
+           "num_predict": 1024,
+           "stop": [],
+           "seed": 42
+         }
+       }
+     }
+     "#;
+    let config = Config {
+      infill: CompletionConfig::Ollama(OllamaInfillConfig {
+        url: "http://localhost:11434/api/generate".to_string(),
+        model: "qwen2.5-coder".to_string(),
+        temperature: Some(0.7),
+        stop: vec![],
+        num_predict: Some(1024),
         seed: Some(42),
       }),
     };

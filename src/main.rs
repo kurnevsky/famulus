@@ -2,6 +2,7 @@ mod config;
 mod infill;
 mod llama_cpp;
 mod mistral;
+mod ollama;
 
 use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 

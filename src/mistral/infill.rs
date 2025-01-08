@@ -48,6 +48,7 @@ pub struct MistralInfillConfig {
   pub top_p: Option<f64>,
   pub max_tokens: Option<u32>,
   pub min_tokens: Option<u32>,
+  #[serde(default)]
   pub stop: Vec<String>,
   pub random_seed: Option<u32>,
 }
