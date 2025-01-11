@@ -1,6 +1,6 @@
 [package]
 name = "famulus"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Evgeny Kurnevsky <kurnevsky@gmail.com>"]
 license = "AGPL-3.0+"
 description = "LSP server integrating LLMs"
