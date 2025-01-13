@@ -6,27 +6,42 @@ mod ollama;
 
 use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Command;
 use config::Config;
 use infill::Infill;
-use lsp_server::{Connection, Message, RequestId, Response};
+use lsp_server::{Connection, ErrorCode, Message, RequestId, Response};
 use lsp_types::{
   notification::{Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Exit, Notification},
-  request::{InlineCompletionRequest, Request},
+  request::{ExecuteCommand, InlineCompletionRequest, Request},
   CancelParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-  InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, NumberOrString, OneOf, Range,
-  ServerCapabilities, TextDocumentSyncKind, Uri,
+  ExecuteCommandOptions, ExecuteCommandParams, InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse,
+  NumberOrString, OneOf, Range, ServerCapabilities, TextDocumentSyncKind, Uri, WorkDoneProgressOptions,
 };
 use ropey::Rope;
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 
+#[derive(Debug)]
+struct Document {
+  rope: Rope,
+  version: i32,
+}
+
 #[derive(Debug, Default)]
 struct State {
-  documents: HashMap<Uri, Rope>,
-  tasks: Arc<papaya::HashMap<RequestId, JoinHandle<()>>>,
+  documents: HashMap<Uri, Document>,
+  tasks: Arc<papaya::HashMap<RequestId, JoinHandle<Result<()>>>>,
 }
+
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LlmRefactorParams {
+  pub uri: Uri,
+  pub range: Range,
+}
+
+const LLM_REFACTOR_COMMAND: &str = "llm-refactor";
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
@@ -41,6 +56,12 @@ async fn main() -> Result<()> {
 
   let (connection, io_threads) = Connection::stdio();
   let server_capabilities = ServerCapabilities {
+    execute_command_provider: Some(ExecuteCommandOptions {
+      commands: vec![LLM_REFACTOR_COMMAND.to_string()],
+      work_done_progress_options: WorkDoneProgressOptions {
+        work_done_progress: Some(false),
+      },
+    }),
     inline_completion_provider: Some(OneOf::Left(true)),
     text_document_sync: Some(lsp_types::TextDocumentSyncCapability::Kind(
       TextDocumentSyncKind::INCREMENTAL,
@@ -69,15 +90,22 @@ async fn main() -> Result<()> {
       Message::Request(request) => {
         if request.method == InlineCompletionRequest::METHOD {
           let (request_id, params) = request.extract::<InlineCompletionParams>(InlineCompletionRequest::METHOD)?;
-          let rope = state
+          let document = state
             .documents
             .get(&params.text_document_position.text_document.uri)
-            .expect("missing document");
+            .ok_or_else(|| {
+              anyhow!(
+                "Missing document: {}",
+                params.text_document_position.text_document.uri.as_str()
+              )
+            })?;
 
-          let index = rope.line_to_char(params.text_document_position.position.line as usize)
+          let index = document
+            .rope
+            .line_to_char(params.text_document_position.position.line as usize)
             + params.text_document_position.position.character as usize;
-          let prefix = rope.slice(0..index).to_string();
-          let suffix = rope.slice(index..rope.len_chars()).to_string();
+          let prefix = document.rope.slice(0..index).to_string();
+          let suffix = document.rope.slice(index..document.rope.len_chars()).to_string();
 
           let mistral_infill = infill.clone();
           let client = client.clone();
@@ -103,21 +131,35 @@ async fn main() -> Result<()> {
                   })
                   .collect();
                 tasks.pin().remove(&request_id_c);
-                if let Result::Err(error) = sender.send(Message::Response(Response::new_ok(
+                sender.send(Message::Response(Response::new_ok(
                   request_id_c,
                   InlineCompletionResponse::Array(completion_items),
-                ))) {
-                  log::warn!("Failed to send server response: {}", error);
-                }
+                )))?;
               }
               Result::Err(error) => {
                 tasks.pin().remove(&request_id_c);
-                log::warn!("Failed to get response: {}", error);
+                sender.send(Message::Response(Response::new_err(
+                  request_id_c,
+                  ErrorCode::RequestFailed as i32,
+                  format!("Failed to get response: {}", error),
+                )))?;
               }
             }
+            Ok(())
           };
           let handle = tokio::task::spawn(future);
           state.tasks.pin().insert(request_id, handle);
+        } else if request.method == ExecuteCommand::METHOD {
+          let (request_id, params) = request.extract::<ExecuteCommandParams>(ExecuteCommand::METHOD)?;
+          let command_str = params.command.as_str();
+          if command_str == LLM_REFACTOR_COMMAND {
+          } else {
+            sender.send(Message::Response(Response::new_err(
+              request_id,
+              ErrorCode::InvalidRequest as i32,
+              format!("Unknown command: {}", command_str),
+            )))?;
+          }
         }
       }
       Message::Notification(notification) => {
@@ -126,7 +168,13 @@ async fn main() -> Result<()> {
           let file = File::open(params.text_document.uri.path().as_str())?;
           let reader = BufReader::new(file);
           let rope = Rope::from_reader(reader)?;
-          state.documents.insert(params.text_document.uri, rope);
+          state.documents.insert(
+            params.text_document.uri,
+            Document {
+              rope,
+              version: params.text_document.version,
+            },
+          );
         } else if notification.method == DidCloseTextDocument::METHOD {
           let params: DidCloseTextDocumentParams = serde_json::from_value(notification.params)?;
           state.documents.remove(&params.text_document.uri);
@@ -134,17 +182,24 @@ async fn main() -> Result<()> {
           let params: DidChangeTextDocumentParams = serde_json::from_value(notification.params)?;
           for change in params.content_changes {
             if let Some(range) = change.range {
-              let rope = state
+              let document = state
                 .documents
                 .get_mut(&params.text_document.uri)
-                .expect("missing document");
-              let start_index = rope.line_to_char(range.start.line as usize) + range.start.character as usize;
-              let end_index = rope.line_to_char(range.end.line as usize) + range.end.character as usize;
-              rope.remove(start_index..end_index);
-              rope.insert(start_index, &change.text);
+                .ok_or_else(|| anyhow!("Missing document: {}", params.text_document.uri.as_str()))?;
+              let start_index = document.rope.line_to_char(range.start.line as usize) + range.start.character as usize;
+              let end_index = document.rope.line_to_char(range.end.line as usize) + range.end.character as usize;
+              document.rope.remove(start_index..end_index);
+              document.rope.insert(start_index, &change.text);
+              document.version = params.text_document.version;
             } else {
               let rope = Rope::from_str(&change.text);
-              state.documents.insert(params.text_document.uri.clone(), rope);
+              state.documents.insert(
+                params.text_document.uri.clone(),
+                Document {
+                  rope,
+                  version: params.text_document.version,
+                },
+              );
             }
           }
         } else if notification.method == Cancel::METHOD {
