@@ -1,27 +1,33 @@
+mod chat;
 mod config;
 mod infill;
 mod llama_cpp;
 mod mistral;
 mod ollama;
+mod openai;
 
 use std::{collections::HashMap, env, fs::File, io::BufReader, sync::Arc};
 
 use anyhow::{anyhow, Result};
+use chat::Chat;
 use clap::Command;
 use config::Config;
 use crossbeam_channel::Sender;
 use infill::Infill;
-use lsp_server::{Connection, ErrorCode, Message, RequestId, Response};
+use lsp_server::{Connection, ErrorCode, Message, Request as LspRequest, RequestId, Response as LspResponse};
 use lsp_types::{
   notification::{Cancel, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Exit, Notification},
-  request::{ExecuteCommand, InlineCompletionRequest, Request},
-  CancelParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-  ExecuteCommandOptions, ExecuteCommandParams, InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse,
-  NumberOrString, OneOf, Range, ServerCapabilities, TextDocumentSyncKind, Uri, WorkDoneProgressOptions,
+  request::{ApplyWorkspaceEdit, ExecuteCommand, InlineCompletionRequest, Request},
+  ApplyWorkspaceEditParams, CancelParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+  DidOpenTextDocumentParams, DocumentChanges, ExecuteCommandOptions, ExecuteCommandParams, InitializeParams,
+  InlineCompletionItem, InlineCompletionParams, InlineCompletionResponse, Location, NumberOrString, OneOf,
+  OptionalVersionedTextDocumentIdentifier, Range, ServerCapabilities, TextDocumentEdit, TextDocumentSyncKind, TextEdit,
+  Uri, WorkDoneProgressOptions, WorkspaceEdit,
 };
+use minijinja::{context, Environment};
 use reqwest::Client;
 use ropey::Rope;
-use serde::Deserialize;
+use serde_json::Value;
 use tokio::task::JoinHandle;
 
 #[derive(Debug)]
@@ -31,15 +37,17 @@ struct Document {
 }
 
 #[derive(Debug)]
-struct State<I: Infill + Clone + Send> {
+struct State<I: Infill + Clone + Send, C: Chat + Clone + Send> {
+  document_changes: bool,
   sender: Arc<Sender<Message>>,
   client: Arc<Client>,
   infill: I,
+  chat: C,
   documents: HashMap<Uri, Document>,
   tasks: Arc<papaya::HashMap<RequestId, JoinHandle<Result<()>>>>,
 }
 
-impl<I: Infill + Clone + Send + 'static> State<I> {
+impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State<I, C> {
   fn inline_completion_request(&self, request_id: RequestId, params: InlineCompletionParams) -> Result<()> {
     let document = self
       .documents
@@ -67,6 +75,7 @@ impl<I: Infill + Clone + Send + 'static> State<I> {
       let completions = infill.infill(client, prefix, suffix).await;
       match completions {
         Result::Ok(completions) => {
+          tasks.pin().remove(&request_id_c);
           let range = Range::new(
             params.text_document_position.position,
             params.text_document_position.position,
@@ -81,15 +90,14 @@ impl<I: Infill + Clone + Send + 'static> State<I> {
               insert_text_format: None,
             })
             .collect();
-          tasks.pin().remove(&request_id_c);
-          sender.send(Message::Response(Response::new_ok(
+          sender.send(Message::Response(LspResponse::new_ok(
             request_id_c,
             InlineCompletionResponse::Array(completion_items),
           )))?;
         }
         Result::Err(error) => {
           tasks.pin().remove(&request_id_c);
-          sender.send(Message::Response(Response::new_err(
+          sender.send(Message::Response(LspResponse::new_err(
             request_id_c,
             ErrorCode::RequestFailed as i32,
             format!("Failed to get response: {}", error),
@@ -101,6 +109,111 @@ impl<I: Infill + Clone + Send + 'static> State<I> {
     let handle = tokio::task::spawn(future);
     self.tasks.pin().insert(request_id, handle);
     Ok(())
+  }
+
+  fn refactor(&self, request_id: RequestId, arguments: Vec<Value>) -> Result<()> {
+    match TryInto::<[_; 2]>::try_into(arguments) {
+      Ok([location, prompt]) => {
+        let location: Location = serde_json::from_value(location)?;
+        let prompt: String = serde_json::from_value(prompt)?;
+        let document = self
+          .documents
+          .get(&location.uri)
+          .ok_or_else(|| anyhow!("Missing document: {}", location.uri.as_str()))?;
+        let user_message = {
+          // TODO: move to initialization
+          let mut env = Environment::new();
+          // TODO: move to config
+          env.add_template("refactor", "{{ prompt }}\n\n```\n{{ selection }}\n```")?;
+          let template = env.get_template("refactor")?;
+          template.render(context!(prompt => prompt, selection => {
+            // TODO: evaluate lazily
+            let start_index = document.rope.line_to_char(location.range.start.line as usize) + location.range.start.character as usize;
+            let end_index = document.rope.line_to_char(location.range.end.line as usize) + location.range.end.character as usize;
+            document.rope.slice(start_index..end_index).to_string()
+          }))?
+        };
+        let version = document.version;
+        let chat = self.chat.clone();
+        let client = self.client.clone();
+        let document_changes = self.document_changes;
+        let sender = self.sender.clone();
+        let tasks = self.tasks.clone();
+        let request_id_c = request_id.clone();
+        let future = async move {
+          let choices = chat
+            .chat(
+              client.clone(),
+              vec![
+                ("system".to_string(), "".to_string()),
+                ("user".to_string(), user_message),
+              ],
+            )
+            .await;
+          match choices {
+            Ok(mut choices) => {
+              tasks.pin().remove(&request_id_c);
+              sender.send(Message::Response(LspResponse::new_ok(request_id_c, ())))?;
+              if let Some(choice) = choices.next() {
+                // TODO: check version
+                let edit_params = if document_changes {
+                  ApplyWorkspaceEditParams {
+                    label: None,
+                    edit: WorkspaceEdit {
+                      changes: None,
+                      document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
+                        text_document: OptionalVersionedTextDocumentIdentifier {
+                          uri: location.uri,
+                          version: Some(version),
+                        },
+                        edits: vec![OneOf::Left(TextEdit {
+                          range: location.range,
+                          new_text: choice,
+                        })],
+                      }])),
+                      change_annotations: None,
+                    },
+                  }
+                } else {
+                  ApplyWorkspaceEditParams {
+                    label: None,
+                    edit: WorkspaceEdit {
+                      changes: Some(HashMap::from([(
+                        location.uri,
+                        vec![TextEdit {
+                          range: location.range,
+                          new_text: choice,
+                        }],
+                      )])),
+                      document_changes: None,
+                      change_annotations: None,
+                    },
+                  }
+                };
+                sender.send(Message::Request(LspRequest::new(
+                  RequestId::from(0),
+                  ApplyWorkspaceEdit::METHOD.to_string(),
+                  edit_params,
+                )))?;
+              }
+            }
+            Err(error) => {
+              tasks.pin().remove(&request_id_c);
+              sender.send(Message::Response(LspResponse::new_err(
+                request_id_c,
+                ErrorCode::RequestFailed as i32,
+                format!("Failed to get response: {}", error),
+              )))?;
+            }
+          }
+          Ok(())
+        };
+        let handle = tokio::task::spawn(future);
+        self.tasks.pin().insert(request_id, handle);
+        Ok(())
+      }
+      Err(arguments) => Err(anyhow!("Wrong number of arguments: {}", arguments.len())),
+    }
   }
 
   fn did_open_text_document(&mut self, params: DidOpenTextDocumentParams) -> Result<()> {
@@ -158,13 +271,6 @@ impl<I: Infill + Clone + Send + 'static> State<I> {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LlmRefactorParams {
-  pub uri: Uri,
-  pub range: Range,
-}
-
 const LLM_REFACTOR_COMMAND: &str = "llm-refactor";
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -192,22 +298,26 @@ async fn main() -> Result<()> {
     )),
     ..Default::default()
   };
-  let initialization_args = connection.initialize(serde_json::to_value(server_capabilities)?)?;
-
-  let config = {
-    #[derive(Clone, PartialEq, Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct InitializationArgs {
-      initialization_options: Config,
-    }
-    serde_json::from_value::<InitializationArgs>(initialization_args)?.initialization_options
-  };
-  let infill = config.get_infill();
+  let initialize_params = connection.initialize(serde_json::to_value(server_capabilities)?)?;
+  let initialize_params = serde_json::from_value::<InitializeParams>(initialize_params)?;
+  let document_changes = initialize_params
+    .capabilities
+    .workspace
+    .and_then(|workspace| workspace.workspace_edit)
+    .and_then(|workspace_edit| workspace_edit.document_changes)
+    .unwrap_or_default();
+  let initialization_options = initialize_params
+    .initialization_options
+    .ok_or_else(|| anyhow!("Missing initialization options"))?;
+  let config = serde_json::from_value::<Config>(initialization_options)?;
+  let (infill, chat) = config.get_infill();
 
   let mut state = State {
+    document_changes,
     sender: Arc::new(connection.sender),
     client: Arc::new(reqwest::Client::new()),
     infill,
+    chat,
     documents: Default::default(),
     tasks: Default::default(),
   };
@@ -220,13 +330,13 @@ async fn main() -> Result<()> {
           state.inline_completion_request(request_id, params)?;
         } else if request.method == ExecuteCommand::METHOD {
           let (request_id, params) = request.extract::<ExecuteCommandParams>(ExecuteCommand::METHOD)?;
-          let command_str = params.command.as_str();
-          if command_str == LLM_REFACTOR_COMMAND {
+          if params.command.as_str() == LLM_REFACTOR_COMMAND {
+            state.refactor(request_id, params.arguments)?;
           } else {
-            state.sender.send(Message::Response(Response::new_err(
+            state.sender.send(Message::Response(LspResponse::new_err(
               request_id,
               ErrorCode::InvalidRequest as i32,
-              format!("Unknown command: {}", command_str),
+              format!("Unknown command: {}", params.command),
             )))?;
           }
         }

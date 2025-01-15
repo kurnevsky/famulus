@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc};
+use std::{future::Future, iter, sync::Arc};
 
 use anyhow::Result;
 use either::Either;
@@ -19,5 +19,16 @@ impl<A: Infill + Sync, B: Infill + Sync> Infill for Either<A, B> {
       Either::Left(a) => a.infill(client, prefix, suffix).await.map(Either::Left),
       Either::Right(b) => b.infill(client, prefix, suffix).await.map(Either::Right),
     }
+  }
+}
+
+impl Infill for () {
+  async fn infill(
+    &self,
+    _client: Arc<Client>,
+    _prefix: String,
+    _suffix: String,
+  ) -> Result<impl Iterator<Item = String>> {
+    Ok(iter::empty())
   }
 }

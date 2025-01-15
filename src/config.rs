@@ -4,10 +4,12 @@ use either::Either;
 use serde::Deserialize;
 
 use crate::{
+  chat::Chat,
   infill::Infill,
   llama_cpp::infill::{LlamaCppInfill, LlamaCppInfillConfig},
   mistral::infill::{MistralInfill, MistralInfillConfig},
   ollama::infill::{OllamaInfill, OllamaInfillConfig},
+  openai::chat::OpenAIChat,
 };
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
@@ -19,13 +21,20 @@ pub enum CompletionConfig {
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
+#[serde(tag = "privider", content = "config")]
+pub enum ChatConfig {
+  OpenAI(),
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Config {
   infill: CompletionConfig,
+  chat: ChatConfig,
 }
 
 impl Config {
-  pub fn get_infill(self) -> impl Infill + Clone + Send {
-    match self.infill {
+  pub fn get_infill(self) -> (impl Infill + Clone + Send, impl Chat + Clone + Send) {
+    let infill = match self.infill {
       CompletionConfig::Mistral(config) => Either::Left(Either::Left(MistralInfill {
         api_key: env::var("MISTRAL_API_KEY").unwrap(),
         config,
@@ -38,14 +47,17 @@ impl Config {
         api_key: env::var("OLLAMA_API_KEY").ok(),
         config,
       }),
-    }
+    };
+    let chat = OpenAIChat {};
+    (infill, chat)
   }
 }
 
 #[cfg(test)]
 mod tests {
   use crate::{
-    llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig, ollama::infill::OllamaInfillConfig,
+    config::ChatConfig, llama_cpp::infill::LlamaCppInfillConfig, mistral::infill::MistralInfillConfig,
+    ollama::infill::OllamaInfillConfig,
   };
 
   use super::{CompletionConfig, Config};
@@ -80,6 +92,7 @@ mod tests {
         stop: vec!["\n\n".to_string()],
         random_seed: Some(42),
       }),
+      chat: ChatConfig::OpenAI(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -109,6 +122,7 @@ mod tests {
         stop: vec!["<|file_separator|>".to_string()],
         seed: Some(42),
       }),
+      chat: ChatConfig::OpenAI(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -140,6 +154,7 @@ mod tests {
         num_predict: Some(1024),
         seed: Some(42),
       }),
+      chat: ChatConfig::OpenAI(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
