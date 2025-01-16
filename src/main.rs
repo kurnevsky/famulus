@@ -111,7 +111,7 @@ impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State
     Ok(())
   }
 
-  fn refactor(&self, request_id: RequestId, arguments: Vec<Value>) -> Result<()> {
+  fn rewrite(&self, request_id: RequestId, arguments: Vec<Value>) -> Result<()> {
     match TryInto::<[_; 2]>::try_into(arguments) {
       Ok([location, prompt]) => {
         let location: Location = serde_json::from_value(location)?;
@@ -124,8 +124,8 @@ impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State
           // TODO: move to initialization
           let mut env = Environment::new();
           // TODO: move to config
-          env.add_template("refactor", "{{ prompt }}\n\n```\n{{ selection }}\n```")?;
-          let template = env.get_template("refactor")?;
+          env.add_template("rewrite", "{{ prompt }}\n\n```\n{{ selection }}\n```")?;
+          let template = env.get_template("rewrite")?;
           template.render(context!(prompt => prompt, selection => {
             // TODO: evaluate lazily
             let start_index = document.rope.line_to_char(location.range.start.line as usize) + location.range.start.character as usize;
@@ -271,7 +271,7 @@ impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State
   }
 }
 
-const LLM_REFACTOR_COMMAND: &str = "llm-refactor";
+const REWRITE_COMMAND: &str = "famulus-rewrite";
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
@@ -287,7 +287,7 @@ async fn main() -> Result<()> {
   let (connection, io_threads) = Connection::stdio();
   let server_capabilities = ServerCapabilities {
     execute_command_provider: Some(ExecuteCommandOptions {
-      commands: vec![LLM_REFACTOR_COMMAND.to_string()],
+      commands: vec![REWRITE_COMMAND.to_string()],
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: Some(false),
       },
@@ -330,8 +330,8 @@ async fn main() -> Result<()> {
           state.inline_completion_request(request_id, params)?;
         } else if request.method == ExecuteCommand::METHOD {
           let (request_id, params) = request.extract::<ExecuteCommandParams>(ExecuteCommand::METHOD)?;
-          if params.command.as_str() == LLM_REFACTOR_COMMAND {
-            state.refactor(request_id, params.arguments)?;
+          if params.command.as_str() == REWRITE_COMMAND {
+            state.rewrite(request_id, params.arguments)?;
           } else {
             state.sender.send(Message::Response(LspResponse::new_err(
               request_id,
