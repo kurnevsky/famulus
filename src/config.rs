@@ -9,46 +9,56 @@ use crate::{
   llama_cpp::infill::{LlamaCppInfill, LlamaCppInfillConfig},
   mistral::infill::{MistralInfill, MistralInfillConfig},
   ollama::infill::{OllamaInfill, OllamaInfillConfig},
-  openai::chat::OpenAIChat,
+  openai::chat::{OpenAIChat, OpenAIChatConfig},
 };
 
-#[derive(Clone, PartialEq, Debug, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Default)]
 #[serde(tag = "privider", content = "config")]
 pub enum CompletionConfig {
+  #[default]
+  Empty,
   Mistral(MistralInfillConfig),
   LlamaCpp(LlamaCppInfillConfig),
   Ollama(OllamaInfillConfig),
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize)]
+#[derive(Clone, PartialEq, Debug, Deserialize, Default)]
 #[serde(tag = "privider", content = "config")]
 pub enum ChatConfig {
-  OpenAI(),
+  #[default]
+  Empty,
+  OpenAI(OpenAIChatConfig),
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Config {
+  #[serde(default)]
   infill: CompletionConfig,
+  #[serde(default)]
   chat: ChatConfig,
 }
 
 impl Config {
   pub fn get_infill(self) -> (impl Infill + Clone + Send, impl Chat + Clone + Send) {
     let infill = match self.infill {
-      CompletionConfig::Mistral(config) => Either::Left(Either::Left(MistralInfill {
+      CompletionConfig::Empty => Either::Left(Either::Left(())),
+      CompletionConfig::Mistral(config) => Either::Left(Either::Right(MistralInfill {
         api_key: env::var("MISTRAL_API_KEY").unwrap(),
         config,
       })),
-      CompletionConfig::LlamaCpp(config) => Either::Left(Either::Right(LlamaCppInfill {
+      CompletionConfig::LlamaCpp(config) => Either::Right(Either::Left(LlamaCppInfill {
         api_key: env::var("LLAMA_CPP_API_KEY").ok(),
         config,
       })),
-      CompletionConfig::Ollama(config) => Either::Right(OllamaInfill {
+      CompletionConfig::Ollama(config) => Either::Right(Either::Right(OllamaInfill {
         api_key: env::var("OLLAMA_API_KEY").ok(),
         config,
-      }),
+      })),
     };
-    let chat = OpenAIChat {};
+    let chat = match self.chat {
+      ChatConfig::Empty => Either::Left(()),
+      ChatConfig::OpenAI(config) => Either::Right(OpenAIChat { config }),
+    };
     (infill, chat)
   }
 }
@@ -92,7 +102,7 @@ mod tests {
         stop: vec!["\n\n".to_string()],
         random_seed: Some(42),
       }),
-      chat: ChatConfig::OpenAI(),
+      chat: ChatConfig::Empty,
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -122,7 +132,7 @@ mod tests {
         stop: vec!["<|file_separator|>".to_string()],
         seed: Some(42),
       }),
-      chat: ChatConfig::OpenAI(),
+      chat: ChatConfig::Empty,
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -154,7 +164,7 @@ mod tests {
         num_predict: Some(1024),
         seed: Some(42),
       }),
-      chat: ChatConfig::OpenAI(),
+      chat: ChatConfig::Empty,
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
