@@ -20,6 +20,7 @@ struct InfillRequest<'a> {
   max_tokens: Option<u32>,
   #[serde(skip_serializing_if = "Option::is_none")]
   min_tokens: Option<u32>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
   stop: &'a Vec<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   random_seed: Option<u32>,

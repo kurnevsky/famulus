@@ -57,7 +57,10 @@ impl Config {
     };
     let chat = match self.chat {
       ChatConfig::Empty => Either::Left(()),
-      ChatConfig::OpenAI(config) => Either::Right(OpenAIChat { config }),
+      ChatConfig::OpenAI(config) => Either::Right(OpenAIChat {
+        api_key: env::var("OPENAI_API_KEY").ok(),
+        config,
+      }),
     };
     (infill, chat)
   }

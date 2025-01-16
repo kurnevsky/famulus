@@ -10,6 +10,7 @@ use crate::infill::Infill;
 struct GenerateOptions<'a> {
   #[serde(skip_serializing_if = "Option::is_none")]
   temperature: Option<f64>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
   stop: &'a Vec<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   num_predict: Option<u32>,

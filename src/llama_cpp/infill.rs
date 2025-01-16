@@ -10,6 +10,7 @@ use crate::infill::Infill;
 struct InfillRequest<'a> {
   input_prefix: String,
   input_suffix: String,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
   stop: &'a Vec<String>,
 }
 
@@ -22,10 +23,10 @@ struct InfillResponse {
 pub struct LlamaCppInfillConfig {
   pub url: String,
   pub temperature: Option<f64>,
-  pub max_tokens: Option<u32>,
+  pub max_tokens: Option<u32>, // TODO
   #[serde(default)]
   pub stop: Vec<String>,
-  pub seed: Option<u32>,
+  pub seed: Option<u32>, // TODO
 }
 
 #[derive(Debug, Clone, PartialEq)]
