@@ -65,7 +65,7 @@ API key can be specified via `LLAMA_CPP_API_KEY` environment variable.
 ```json
 {
   "infill": {
-    "privider": "Ollama",
+    "provider": "Ollama",
     "config": {
       "url": "http://localhost:11434/api/generate",
       "model": "qwen2.5-coder",

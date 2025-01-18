@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
-#[serde(tag = "privider", content = "config")]
+#[serde(tag = "provider", content = "config")]
 pub enum CompletionConfig {
   #[default]
   Empty,
@@ -23,7 +23,7 @@ pub enum CompletionConfig {
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
-#[serde(tag = "privider", content = "config")]
+#[serde(tag = "provider", content = "config")]
 pub enum ChatConfig {
   #[default]
   Empty,
@@ -80,7 +80,7 @@ mod tests {
     let str = r#"
     {
       "infill": {
-        "privider": "Mistral",
+        "provider": "Mistral",
         "config": {
           "url": "https://api.mistral.ai/v1/fim/completions",
           "model": "codestral-latest",
@@ -116,7 +116,7 @@ mod tests {
     let str = r#"
     {
       "infill": {
-        "privider": "LlamaCpp",
+        "provider": "LlamaCpp",
         "config": {
           "url": "http://localhost:8080/infill",
           "temperature": 0.7,
@@ -146,7 +146,7 @@ mod tests {
     let str = r#"
      {
        "infill": {
-         "privider": "Ollama",
+         "provider": "Ollama",
          "config": {
            "url": "http://localhost:11434/api/generate",
            "model": "qwen2.5-coder",
