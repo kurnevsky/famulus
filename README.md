@@ -70,7 +70,7 @@ API key can be specified via `LLAMA_CPP_API_KEY` environment variable.
       "url": "http://localhost:11434/api/generate",
       "model": "qwen2.5-coder",
       "temperature": 0.7,
-      "num_predict": 1024,
+      "max_tokens": 1024,
       "stop": [],
       "seed": 42
     }
@@ -103,7 +103,7 @@ functionality can be added using a reverse proxy.
       "max_tokens": 1024,
       "min_tokens": 1,
       "stop": ["\n\n"],
-      "random_seed": 42
+      "seed": 42
     }
   }
 }

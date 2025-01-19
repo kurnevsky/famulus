@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::infill::Infill;
+use crate::{
+  config::{Mistral, ModelConfig},
+  infill::Infill,
+};
 
 #[derive(Clone, PartialEq, Debug, Serialize)]
 struct InfillRequest<'a> {
@@ -41,40 +44,21 @@ struct InfillResponse {
   choices: Vec<Choice>,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-pub struct MistralInfillConfig {
-  pub url: String,
-  pub model: String,
-  pub temperature: Option<f64>,
-  pub top_p: Option<f64>,
-  pub max_tokens: Option<u32>,
-  pub min_tokens: Option<u32>,
-  #[serde(default)]
-  pub stop: Vec<String>,
-  pub random_seed: Option<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MistralInfill {
-  pub api_key: String,
-  pub config: MistralInfillConfig,
-}
-
-impl Infill for MistralInfill {
+impl Infill for ModelConfig<Mistral> {
   async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
     let response = client
-      .post(&self.config.url)
-      .bearer_auth(&self.api_key)
+      .post(&self.url)
+      .bearer_auth(&env::var(&self.api_key_env)?)
       .json(&InfillRequest {
-        model: &self.config.model,
+        model: &self.generation_config.model,
         prompt: prefix,
         suffix: Some(suffix),
-        temperature: self.config.temperature,
-        top_p: self.config.top_p,
-        max_tokens: self.config.max_tokens,
-        min_tokens: self.config.min_tokens,
-        stop: &self.config.stop,
-        random_seed: self.config.random_seed,
+        temperature: self.generation_config.temperature,
+        top_p: self.generation_config.top_p,
+        max_tokens: self.generation_config.max_tokens,
+        min_tokens: self.generation_config.min_tokens,
+        stop: &self.generation_config.stop,
+        random_seed: self.generation_config.seed,
       })
       .send()
       .await?

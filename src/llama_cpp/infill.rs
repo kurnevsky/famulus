@@ -1,10 +1,13 @@
-use std::{iter, sync::Arc};
+use std::{env, iter, sync::Arc};
 
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::infill::Infill;
+use crate::{
+  config::{LlamaCpp, ModelConfig},
+  infill::Infill,
+};
 
 #[derive(Clone, PartialEq, Debug, Serialize)]
 struct InfillRequest<'a> {
@@ -19,27 +22,11 @@ struct InfillResponse {
   content: String,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-pub struct LlamaCppInfillConfig {
-  pub url: String,
-  pub temperature: Option<f64>,
-  pub max_tokens: Option<u32>, // TODO
-  #[serde(default)]
-  pub stop: Vec<String>,
-  pub seed: Option<u32>, // TODO
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LlamaCppInfill {
-  pub api_key: Option<String>,
-  pub config: LlamaCppInfillConfig,
-}
-
-impl Infill for LlamaCppInfill {
+impl Infill for ModelConfig<LlamaCpp> {
   async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
-    let request = client.post(&self.config.url);
-    let request = if let Some(ref api_key) = self.api_key {
-      request.bearer_auth(api_key)
+    let request = client.post(&self.url);
+    let request = if let Some(ref api_key_env) = self.api_key_env {
+      request.bearer_auth(&env::var(api_key_env)?)
     } else {
       request
     };
@@ -47,7 +34,7 @@ impl Infill for LlamaCppInfill {
       .json(&InfillRequest {
         input_prefix: prefix,
         input_suffix: suffix,
-        stop: &self.config.stop,
+        stop: &self.generation_config.stop,
       })
       .send()
       .await?

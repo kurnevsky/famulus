@@ -37,17 +37,16 @@ struct Document {
 }
 
 #[derive(Debug)]
-struct State<I: Infill + Clone + Send, C: Chat + Clone + Send> {
+struct State {
   document_changes: bool,
   sender: Arc<Sender<Message>>,
   client: Arc<Client>,
-  infill: I,
-  chat: C,
+  config: Config,
   documents: HashMap<Uri, Document>,
   tasks: Arc<papaya::HashMap<RequestId, JoinHandle<Result<()>>>>,
 }
 
-impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State<I, C> {
+impl State {
   fn inline_completion_request(&self, request_id: RequestId, params: InlineCompletionParams) -> Result<()> {
     let document = self
       .documents
@@ -66,7 +65,7 @@ impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State
     let prefix = document.rope.slice(0..index).to_string();
     let suffix = document.rope.slice(index..document.rope.len_chars()).to_string();
 
-    let infill = self.infill.clone();
+    let infill = self.config.get_infill();
     let client = self.client.clone();
     let sender = self.sender.clone();
     let tasks = self.tasks.clone();
@@ -134,7 +133,7 @@ impl<I: Infill + Clone + Send + 'static, C: Chat + Clone + Send + 'static> State
           }))?
         };
         let version = document.version;
-        let chat = self.chat.clone();
+        let chat = self.config.get_chat();
         let client = self.client.clone();
         let document_changes = self.document_changes;
         let sender = self.sender.clone();
@@ -310,14 +309,12 @@ async fn main() -> Result<()> {
     .initialization_options
     .ok_or_else(|| anyhow!("Missing initialization options"))?;
   let config = serde_json::from_value::<Config>(initialization_options)?;
-  let (infill, chat) = config.get_infill();
 
   let mut state = State {
     document_changes,
     sender: Arc::new(connection.sender),
     client: Arc::new(reqwest::Client::new()),
-    infill,
-    chat,
+    config,
     documents: Default::default(),
     tasks: Default::default(),
   };

@@ -1,10 +1,13 @@
-use std::{iter, sync::Arc};
+use std::{env, iter, sync::Arc};
 
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::infill::Infill;
+use crate::{
+  config::{ModelConfig, Ollama},
+  infill::Infill,
+};
 
 #[derive(Clone, PartialEq, Debug, Serialize)]
 struct GenerateOptions<'a> {
@@ -32,42 +35,25 @@ struct GenerateResponse {
   response: String,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-pub struct OllamaInfillConfig {
-  pub url: String,
-  pub model: String,
-  pub temperature: Option<f64>,
-  #[serde(default)]
-  pub stop: Vec<String>,
-  pub num_predict: Option<u32>,
-  pub seed: Option<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct OllamaInfill {
-  pub api_key: Option<String>,
-  pub config: OllamaInfillConfig,
-}
-
-impl Infill for OllamaInfill {
+impl Infill for ModelConfig<Ollama> {
   async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
-    let request = client.post(&self.config.url);
-    let request = if let Some(ref api_key) = self.api_key {
-      request.bearer_auth(api_key)
+    let request = client.post(&self.url);
+    let request = if let Some(ref api_key_env) = self.api_key_env {
+      request.bearer_auth(&env::var(api_key_env)?)
     } else {
       request
     };
     let response = request
       .json(&GenerateRequest {
-        model: &self.config.model,
+        model: &self.generation_config.model,
         prompt: prefix,
         suffix,
         stream: false,
         options: GenerateOptions {
-          temperature: self.config.temperature,
-          stop: &self.config.stop,
-          num_predict: self.config.num_predict,
-          seed: self.config.seed,
+          temperature: self.generation_config.temperature,
+          stop: &self.generation_config.stop,
+          num_predict: self.generation_config.max_tokens,
+          seed: self.generation_config.seed,
         },
       })
       .send()

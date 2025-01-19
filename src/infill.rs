@@ -22,6 +22,28 @@ impl<A: Infill + Sync, B: Infill + Sync> Infill for Either<A, B> {
   }
 }
 
+impl<I: Infill> Infill for &I {
+  fn infill(
+    &self,
+    client: Arc<Client>,
+    prefix: String,
+    suffix: String,
+  ) -> impl Future<Output = Result<impl Iterator<Item = String>>> + Send {
+    (*self).infill(client, prefix, suffix)
+  }
+}
+
+impl<I: Infill> Infill for Arc<I> {
+  fn infill(
+    &self,
+    client: Arc<Client>,
+    prefix: String,
+    suffix: String,
+  ) -> impl Future<Output = Result<impl Iterator<Item = String>>> + Send {
+    self.as_ref().infill(client, prefix, suffix)
+  }
+}
+
 impl Infill for () {
   async fn infill(
     &self,
