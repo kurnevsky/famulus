@@ -13,6 +13,7 @@ use chat::Chat;
 use clap::Command;
 use config::Config;
 use crossbeam_channel::Sender;
+use dashmap::DashMap;
 use infill::Infill;
 use lsp_server::{Connection, ErrorCode, Message, Request as LspRequest, RequestId, Response as LspResponse};
 use lsp_types::{
@@ -42,7 +43,7 @@ struct State {
   sender: Arc<Sender<Message>>,
   client: Arc<Client>,
   config: Config,
-  documents: HashMap<Uri, Document>,
+  documents: Arc<DashMap<Uri, Document>>,
   tasks: Arc<papaya::HashMap<RequestId, JoinHandle<Result<()>>>>,
   env: Environment<'static>,
 }
@@ -146,6 +147,7 @@ impl State {
         let document_changes = self.document_changes;
         let sender = self.sender.clone();
         let tasks = self.tasks.clone();
+        let documents = self.documents.clone();
         let request_id_c = request_id.clone();
         let future = async move {
           let choices = chat.chat(client.clone(), messages).await;
@@ -154,7 +156,12 @@ impl State {
               tasks.pin().remove(&request_id_c);
               sender.send(Message::Response(LspResponse::new_ok(request_id_c, ())))?;
               if let Some(choice) = choices.next() {
-                // TODO: check version
+                if !documents
+                  .get(&location.uri)
+                  .map_or(false, |document| document.version == version)
+                {
+                  return Ok(());
+                }
                 let edit_params = if document_changes {
                   ApplyWorkspaceEditParams {
                     label: None,
@@ -236,7 +243,7 @@ impl State {
   fn did_change_text_document(&mut self, params: DidChangeTextDocumentParams) -> Result<()> {
     for change in params.content_changes {
       if let Some(range) = change.range {
-        let document = self
+        let mut document = self
           .documents
           .get_mut(&params.text_document.uri)
           .ok_or_else(|| anyhow!("Missing document: {}", params.text_document.uri.as_str()))?;
