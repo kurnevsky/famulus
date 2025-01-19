@@ -13,8 +13,12 @@ use crate::{
 struct InfillRequest<'a> {
   input_prefix: String,
   input_suffix: String,
+  temperature: Option<f64>,
+  top_p: Option<f64>,
+  max_tokens: Option<u32>,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   stop: &'a Vec<String>,
+  seed: Option<u32>,
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
@@ -34,7 +38,11 @@ impl Infill for ModelConfig<LlamaCpp> {
       .json(&InfillRequest {
         input_prefix: prefix,
         input_suffix: suffix,
+        temperature: self.generation_config.temperature,
+        top_p: self.generation_config.top_p,
+        max_tokens: self.generation_config.max_tokens,
         stop: &self.generation_config.stop,
+        seed: self.generation_config.seed,
       })
       .send()
       .await?

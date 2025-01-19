@@ -40,7 +40,6 @@ impl Provider for Mistral {
   type Seed = Option<u32>;
 }
 
-// TODO: use all params
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub struct LlamaCpp;
 impl Provider for LlamaCpp {
