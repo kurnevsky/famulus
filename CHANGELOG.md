@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.4
+
+* Add `rewrite` command
+* Unify generation config across all providers
+* Fix typo in the config (privider -> provider)
+
 ## 0.0.3
 
 * Make `stop` config parameter optional
