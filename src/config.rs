@@ -118,18 +118,30 @@ pub enum CompletionConfig {
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
 #[serde(tag = "provider", content = "config")]
-pub enum ChatConfig {
+pub enum ChatModelConfig {
   #[default]
   Empty,
   OpenAI(Arc<ModelConfig<OpenAI>>),
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
+pub struct MessageConfig {
+  pub role: String,
+  pub content: String,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Default)]
+pub struct ChatConfig {
+  pub model_config: ChatModelConfig,
+  pub messages: Vec<MessageConfig>,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Config {
   #[serde(default)]
-  infill: CompletionConfig,
+  pub infill: CompletionConfig,
   #[serde(default)]
-  chat: ChatConfig,
+  pub chat: ChatConfig,
 }
 
 impl Config {
@@ -143,9 +155,9 @@ impl Config {
   }
 
   pub fn get_chat(&self) -> impl Chat + Clone + Send {
-    match self.chat {
-      ChatConfig::Empty => Either::Left(()),
-      ChatConfig::OpenAI(ref config) => Either::Right(config.clone()),
+    match self.chat.model_config {
+      ChatModelConfig::Empty => Either::Left(()),
+      ChatModelConfig::OpenAI(ref config) => Either::Right(config.clone()),
     }
   }
 }
@@ -190,7 +202,7 @@ mod tests {
           seed: Some(42),
         },
       })),
-      chat: ChatConfig::Empty,
+      chat: ChatConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -227,7 +239,7 @@ mod tests {
           seed: Some(42),
         },
       })),
-      chat: ChatConfig::Empty,
+      chat: ChatConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -265,7 +277,7 @@ mod tests {
           seed: Some(42),
         },
       })),
-      chat: ChatConfig::Empty,
+      chat: ChatConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);

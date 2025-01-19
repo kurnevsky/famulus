@@ -31,4 +31,4 @@ papaya = "0.1"
 clap = { version = "4.5", features = ["cargo"] }
 either = "1.13"
 crossbeam-channel = "0.5"
-minijinja = "2.6"
+minijinja = { version = "2.6", features = ["loader"] }

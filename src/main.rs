@@ -44,6 +44,7 @@ struct State {
   config: Config,
   documents: HashMap<Uri, Document>,
   tasks: Arc<papaya::HashMap<RequestId, JoinHandle<Result<()>>>>,
+  env: Environment<'static>,
 }
 
 impl State {
@@ -119,19 +120,26 @@ impl State {
           .documents
           .get(&location.uri)
           .ok_or_else(|| anyhow!("Missing document: {}", location.uri.as_str()))?;
-        let user_message = {
-          // TODO: move to initialization
-          let mut env = Environment::new();
-          // TODO: move to config
-          env.add_template("rewrite", "{{ prompt }}\n\n```\n{{ selection }}\n```")?;
-          let template = env.get_template("rewrite")?;
-          template.render(context!(prompt => prompt, selection => {
-            // TODO: evaluate lazily
-            let start_index = document.rope.line_to_char(location.range.start.line as usize) + location.range.start.character as usize;
-            let end_index = document.rope.line_to_char(location.range.end.line as usize) + location.range.end.character as usize;
-            document.rope.slice(start_index..end_index).to_string()
-          }))?
+        let selection = {
+          // TODO: evaluate lazily
+          let start_index =
+            document.rope.line_to_char(location.range.start.line as usize) + location.range.start.character as usize;
+          let end_index =
+            document.rope.line_to_char(location.range.end.line as usize) + location.range.end.character as usize;
+          document.rope.slice(start_index..end_index).to_string()
         };
+        let messages = self
+          .config
+          .chat
+          .messages
+          .iter()
+          .enumerate()
+          .map(|(i, message)| {
+            let template = self.env.get_template(&format!("rewrite_{}", i))?;
+            let content = template.render(context!(prompt => prompt, selection => selection))?;
+            Ok((message.role.clone(), content))
+          })
+          .collect::<Result<Vec<_>>>()?;
         let version = document.version;
         let chat = self.config.get_chat();
         let client = self.client.clone();
@@ -140,15 +148,7 @@ impl State {
         let tasks = self.tasks.clone();
         let request_id_c = request_id.clone();
         let future = async move {
-          let choices = chat
-            .chat(
-              client.clone(),
-              vec![
-                ("system".to_string(), "".to_string()),
-                ("user".to_string(), user_message),
-              ],
-            )
-            .await;
+          let choices = chat.chat(client.clone(), messages).await;
           match choices {
             Ok(mut choices) => {
               tasks.pin().remove(&request_id_c);
@@ -310,6 +310,11 @@ async fn main() -> Result<()> {
     .ok_or_else(|| anyhow!("Missing initialization options"))?;
   let config = serde_json::from_value::<Config>(initialization_options)?;
 
+  let mut env = Environment::new();
+  for (i, message) in config.chat.messages.iter().enumerate() {
+    env.add_template_owned(format!("rewrite_{}", i), message.content.clone())?;
+  }
+
   let mut state = State {
     document_changes,
     sender: Arc::new(connection.sender),
@@ -317,6 +322,7 @@ async fn main() -> Result<()> {
     config,
     documents: Default::default(),
     tasks: Default::default(),
+    env,
   };
 
   for msg in &connection.receiver {
