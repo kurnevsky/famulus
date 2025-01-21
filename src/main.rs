@@ -44,7 +44,7 @@ struct State {
   client: Arc<Client>,
   config: Config,
   documents: Arc<DashMap<Uri, Document>>,
-  tasks: Arc<papaya::HashMap<RequestId, JoinHandle<Result<()>>>>,
+  tasks: Arc<DashMap<RequestId, JoinHandle<Result<()>>>>,
   env: Environment<'static>,
 }
 
@@ -76,7 +76,7 @@ impl State {
       let completions = infill.infill(client, prefix, suffix).await;
       match completions {
         Result::Ok(completions) => {
-          tasks.pin().remove(&request_id_c);
+          tasks.remove(&request_id_c);
           let range = Range::new(
             params.text_document_position.position,
             params.text_document_position.position,
@@ -97,7 +97,7 @@ impl State {
           )))?;
         }
         Result::Err(error) => {
-          tasks.pin().remove(&request_id_c);
+          tasks.remove(&request_id_c);
           sender.send(Message::Response(LspResponse::new_err(
             request_id_c,
             ErrorCode::RequestFailed as i32,
@@ -108,7 +108,7 @@ impl State {
       Ok(())
     };
     let handle = tokio::task::spawn(future);
-    self.tasks.pin().insert(request_id, handle);
+    self.tasks.insert(request_id, handle);
     Ok(())
   }
 
@@ -153,7 +153,7 @@ impl State {
           let choices = chat.chat(client.clone(), messages).await;
           match choices {
             Ok(mut choices) => {
-              tasks.pin().remove(&request_id_c);
+              tasks.remove(&request_id_c);
               sender.send(Message::Response(LspResponse::new_ok(request_id_c, ())))?;
               if let Some(choice) = choices.next() {
                 if !documents
@@ -204,7 +204,7 @@ impl State {
               }
             }
             Err(error) => {
-              tasks.pin().remove(&request_id_c);
+              tasks.remove(&request_id_c);
               sender.send(Message::Response(LspResponse::new_err(
                 request_id_c,
                 ErrorCode::RequestFailed as i32,
@@ -215,7 +215,7 @@ impl State {
           Ok(())
         };
         let handle = tokio::task::spawn(future);
-        self.tasks.pin().insert(request_id, handle);
+        self.tasks.insert(request_id, handle);
         Ok(())
       }
       Err(arguments) => Err(anyhow!("Wrong number of arguments: {}", arguments.len())),
@@ -271,7 +271,7 @@ impl State {
       NumberOrString::Number(id) => id.into(),
       NumberOrString::String(id) => id.into(),
     };
-    if let Some(handle) = self.tasks.pin().remove(&id) {
+    if let Some((_, handle)) = self.tasks.remove(&id) {
       handle.abort();
     }
   }

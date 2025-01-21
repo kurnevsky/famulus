@@ -27,7 +27,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 tokio = { version = "1.42", features = ["rt", "rt-multi-thread", "macros"] }
 log = "0.4"
 env_logger = "0.11"
-papaya = "0.1"
 dashmap = "6.1"
 clap = { version = "4.5", features = ["cargo"] }
 either = "1.13"
