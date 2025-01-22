@@ -14,6 +14,7 @@ use clap::Command;
 use config::Config;
 use crossbeam_channel::Sender;
 use dashmap::DashMap;
+use derive_more::From;
 use infill::Infill;
 use lsp_server::{Connection, ErrorCode, Message, Request as LspRequest, RequestId, Response as LspResponse};
 use lsp_types::{
@@ -25,11 +26,50 @@ use lsp_types::{
   OptionalVersionedTextDocumentIdentifier, Range, ServerCapabilities, TextDocumentEdit, TextDocumentSyncKind, TextEdit,
   Uri, WorkDoneProgressOptions, WorkspaceEdit,
 };
-use minijinja::{context, Environment};
+use ramhorns::{encoding::Encoder, Content, Template};
 use reqwest::Client;
-use ropey::Rope;
+use ropey::{Rope, RopeSlice};
 use serde_json::Value;
 use tokio::task::JoinHandle;
+
+#[derive(From)]
+struct RopeSliceContent<'a>(RopeSlice<'a>);
+
+impl Content for RopeSliceContent<'_> {
+  #[inline]
+  fn is_truthy(&self) -> bool {
+    self.0.len_chars() > 0
+  }
+
+  #[inline]
+  fn capacity_hint(&self, _tpl: &Template) -> usize {
+    self.0.len_chars()
+  }
+
+  #[inline]
+  fn render_escaped<E: Encoder>(&self, encoder: &mut E) -> Result<(), E::Error> {
+    for chunk in self.0.chunks() {
+      encoder.write_escaped(chunk)?;
+    }
+    Ok(())
+  }
+
+  #[inline]
+  fn render_unescaped<E: Encoder>(&self, encoder: &mut E) -> Result<(), E::Error> {
+    for chunk in self.0.chunks() {
+      encoder.write_unescaped(chunk)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Content)]
+struct SelectionContent<'a> {
+  prompt: String,
+  selection: RopeSliceContent<'a>,
+  prefix: RopeSliceContent<'a>,
+  suffix: RopeSliceContent<'a>,
+}
 
 #[derive(Debug)]
 struct Document {
@@ -45,7 +85,7 @@ struct State {
   config: Config,
   documents: Arc<DashMap<Uri, Document>>,
   tasks: Arc<DashMap<RequestId, JoinHandle<Result<()>>>>,
-  env: Environment<'static>,
+  templates: Vec<Template<'static>>,
 }
 
 impl State {
@@ -64,8 +104,8 @@ impl State {
       .rope
       .line_to_char(params.text_document_position.position.line as usize)
       + params.text_document_position.position.character as usize;
-    let prefix = document.rope.slice(0..index).to_string();
-    let suffix = document.rope.slice(index..document.rope.len_chars()).to_string();
+    let prefix = document.rope.slice(..index).to_string();
+    let suffix = document.rope.slice(index..).to_string();
 
     let infill = self.config.get_infill();
     let client = self.client.clone();
@@ -121,26 +161,24 @@ impl State {
           .documents
           .get(&location.uri)
           .ok_or_else(|| anyhow!("Missing document: {}", location.uri.as_str()))?;
-        let selection = {
-          // TODO: evaluate lazily
-          let start_index =
-            document.rope.line_to_char(location.range.start.line as usize) + location.range.start.character as usize;
-          let end_index =
-            document.rope.line_to_char(location.range.end.line as usize) + location.range.end.character as usize;
-          document.rope.slice(start_index..end_index).to_string()
+        let start_index =
+          document.rope.line_to_char(location.range.start.line as usize) + location.range.start.character as usize;
+        let end_index =
+          document.rope.line_to_char(location.range.end.line as usize) + location.range.end.character as usize;
+        let content = SelectionContent {
+          prompt,
+          selection: document.rope.slice(start_index..end_index).into(),
+          prefix: document.rope.slice(..start_index).into(),
+          suffix: document.rope.slice(end_index..).into(),
         };
         let messages = self
           .config
           .chat
           .messages
           .iter()
-          .enumerate()
-          .map(|(i, message)| {
-            let template = self.env.get_template(&format!("rewrite_{}", i))?;
-            let content = template.render(context!(prompt => prompt, selection => selection))?;
-            Ok((message.role.clone(), content))
-          })
-          .collect::<Result<Vec<_>>>()?;
+          .zip(self.templates.iter())
+          .map(|(message, template)| (message.role.clone(), template.render(&content)))
+          .collect();
         let version = document.version;
         let chat = self.config.get_chat();
         let client = self.client.clone();
@@ -317,10 +355,12 @@ async fn main() -> Result<()> {
     .ok_or_else(|| anyhow!("Missing initialization options"))?;
   let config = serde_json::from_value::<Config>(initialization_options)?;
 
-  let mut env = Environment::new();
-  for (i, message) in config.chat.messages.iter().enumerate() {
-    env.add_template_owned(format!("rewrite_{}", i), message.content.clone())?;
-  }
+  let templates = config
+    .chat
+    .messages
+    .iter()
+    .map(|message| Template::new(message.content.clone()).map_err(|e| e.into()))
+    .collect::<Result<_>>()?;
 
   let mut state = State {
     document_changes,
@@ -329,7 +369,7 @@ async fn main() -> Result<()> {
     config,
     documents: Default::default(),
     tasks: Default::default(),
-    env,
+    templates,
   };
 
   for msg in &connection.receiver {
