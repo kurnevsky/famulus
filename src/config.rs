@@ -168,7 +168,7 @@ mod tests {
   use crate::config::{ChatConfig, CompletionConfig, Config, GenerationConfig, ModelConfig};
 
   #[test]
-  fn mistral_config() {
+  fn mistral_infill_config() {
     let str = r#"
     {
       "infill": {
@@ -208,7 +208,7 @@ mod tests {
   }
 
   #[test]
-  fn llama_cpp_config() {
+  fn llama_cpp_infill_config() {
     let str = r#"
     {
       "infill": {
@@ -245,7 +245,7 @@ mod tests {
   }
 
   #[test]
-  fn ollama_config() {
+  fn ollama_infill_config() {
     let str = r#"
      {
        "infill": {
@@ -277,6 +277,66 @@ mod tests {
         },
       })),
       chat: ChatConfig::default(),
+    };
+    let parsed: Config = serde_json::from_str(str).unwrap();
+    assert_eq!(parsed, config);
+  }
+
+  #[test]
+  fn openai_chat_config() {
+    let str = r#"
+    {
+      "chat": {
+        "model_config": {
+          "provider": "OpenAI",
+          "config": {
+            "url": "https://api.groq.com/openai/v1/chat/completions",
+            "api_key_env": "OPENAI_API_KEY",
+            "model": "llama-3.3-70b-versatile",
+            "temperature": 0.7,
+            "max_tokens": 1024,
+            "stop": [],
+            "seed": 42
+          }
+        },
+        "messages": [
+          {
+            "role": "system",
+            "content": "You provide the modified code directly without any surrounding explanation or context, and do not enclose it within a code block."
+          },
+          {
+            "role": "user",
+            "content": "{{ prompt }}\n\n```\n{{ selection }}\n```"
+          }
+        ]
+      }
+    }
+    "#;
+    let config = Config {
+      infill: CompletionConfig::default(),
+      chat: ChatConfig {
+        model_config: super::ChatModelConfig::OpenAI(Arc::new(ModelConfig {
+          url: "https://api.groq.com/openai/v1/chat/completions".to_string(),
+          api_key_env: Some("OPENAI_API_KEY".to_string()),
+          generation_config: GenerationConfig {
+            model: Some("llama-3.3-70b-versatile".to_string()),
+            temperature: Some(0.7),
+            top_p: None,
+            max_tokens: Some(1024),
+            min_tokens: None,
+            stop: vec![],
+            seed: Some(42),
+          },
+        })),
+        messages: vec![super::MessageConfig {
+          role: "system".to_string(),
+          content: "You provide the modified code directly without any surrounding explanation or context, and do not enclose it within a code block.".to_string(),
+        },
+        super::MessageConfig {
+          role: "user".to_string(),
+          content: "{{ prompt }}\n\n```\n{{ selection }}\n```".to_string(),
+        }],
+      },
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
