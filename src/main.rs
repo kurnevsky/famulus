@@ -173,14 +173,14 @@ impl State {
         };
         let messages = self
           .config
-          .chat
+          .rewrite
           .messages
           .iter()
           .zip(self.templates.iter())
           .map(|(message, template)| (message.role.clone(), template.render(&content)))
           .collect();
         let version = document.version;
-        let chat = self.config.get_chat();
+        let chat = self.config.get_rewrite();
         let client = self.client.clone();
         let document_changes = self.document_changes;
         let sender = self.sender.clone();
@@ -356,7 +356,7 @@ async fn main() -> Result<()> {
   let config = serde_json::from_value::<Config>(initialization_options)?;
 
   let templates = config
-    .chat
+    .rewrite
     .messages
     .iter()
     .map(|message| Template::new(message.content.clone()).map_err(|e| e.into()))

@@ -130,7 +130,7 @@ pub struct MessageConfig {
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
-pub struct ChatConfig {
+pub struct RewriteConfig {
   pub model_config: ChatModelConfig,
   pub messages: Vec<MessageConfig>,
 }
@@ -140,7 +140,7 @@ pub struct Config {
   #[serde(default)]
   pub infill: CompletionConfig,
   #[serde(default)]
-  pub chat: ChatConfig,
+  pub rewrite: RewriteConfig,
 }
 
 impl Config {
@@ -153,8 +153,8 @@ impl Config {
     }
   }
 
-  pub fn get_chat(&self) -> impl Chat + Clone + Send {
-    match self.chat.model_config {
+  pub fn get_rewrite(&self) -> impl Chat + Clone + Send {
+    match self.rewrite.model_config {
       ChatModelConfig::Empty => Either::Left(()),
       ChatModelConfig::OpenAI(ref config) => Either::Right(config.clone()),
     }
@@ -165,7 +165,7 @@ impl Config {
 mod tests {
   use std::sync::Arc;
 
-  use crate::config::{ChatConfig, CompletionConfig, Config, GenerationConfig, ModelConfig};
+  use crate::config::{CompletionConfig, Config, GenerationConfig, ModelConfig, RewriteConfig};
 
   #[test]
   fn mistral_infill_config() {
@@ -201,7 +201,7 @@ mod tests {
           seed: Some(42),
         },
       })),
-      chat: ChatConfig::default(),
+      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -238,7 +238,7 @@ mod tests {
           seed: Some(42),
         },
       })),
-      chat: ChatConfig::default(),
+      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -276,7 +276,7 @@ mod tests {
           seed: Some(42),
         },
       })),
-      chat: ChatConfig::default(),
+      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -286,7 +286,7 @@ mod tests {
   fn openai_chat_config() {
     let str = r#"
     {
-      "chat": {
+      "rewrite": {
         "model_config": {
           "provider": "OpenAI",
           "config": {
@@ -314,7 +314,7 @@ mod tests {
     "#;
     let config = Config {
       infill: CompletionConfig::default(),
-      chat: ChatConfig {
+      rewrite: RewriteConfig {
         model_config: super::ChatModelConfig::OpenAI(Arc::new(ModelConfig {
           url: "https://api.groq.com/openai/v1/chat/completions".to_string(),
           api_key_env: Some("OPENAI_API_KEY".to_string()),

@@ -124,7 +124,7 @@ OpenAI-compatible chat API:
 
 ```json
 {
-  "chat": {
+  "rewrite": {
     "model_config": {
       "provider": "OpenAI",
       "config": {
