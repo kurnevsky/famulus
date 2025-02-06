@@ -1,6 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
 use either::Either;
+use ramhorns::Template;
 use serde::{de::Error, Deserialize};
 
 use crate::{chat::Chat, infill::Infill};
@@ -105,14 +106,44 @@ pub struct ModelConfig<P: Provider> {
   pub generation_config: GenerationConfig<P>,
 }
 
+#[derive(Debug)]
+pub struct TemplateConfig(pub Template<'static>);
+
+impl PartialEq for TemplateConfig {
+  fn eq(&self, other: &Self) -> bool {
+    self.0.source() == other.0.source()
+  }
+}
+
+impl<'a> Deserialize<'a> for TemplateConfig {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'a>,
+  {
+    let s = String::deserialize(deserializer)?;
+    let template = Template::new(s).map_err(|e| Error::custom(e.to_string()))?;
+    Ok(TemplateConfig(template))
+  }
+}
+
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
-#[serde(tag = "provider", content = "config")]
+#[serde(tag = "provider")]
 pub enum CompletionConfig {
   #[default]
   Empty,
-  Mistral(Arc<ModelConfig<Mistral>>),
-  LlamaCpp(Arc<ModelConfig<LlamaCpp>>),
-  Ollama(Arc<ModelConfig<Ollama>>),
+  Mistral {
+    config: Arc<ModelConfig<Mistral>>,
+  },
+  LlamaCpp {
+    config: Arc<ModelConfig<LlamaCpp>>,
+  },
+  Ollama {
+    config: Arc<ModelConfig<Ollama>>,
+  },
+  OpenAICompletions {
+    config: Arc<ModelConfig<OpenAI>>,
+    template: Arc<TemplateConfig>,
+  },
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
@@ -147,9 +178,13 @@ impl Config {
   pub fn get_infill(&self) -> impl Infill + Clone + Send {
     match self.infill {
       CompletionConfig::Empty => Either::Left(Either::Left(())),
-      CompletionConfig::Mistral(ref config) => Either::Left(Either::Right(config.clone())),
-      CompletionConfig::LlamaCpp(ref config) => Either::Right(Either::Left(config.clone())),
-      CompletionConfig::Ollama(ref config) => Either::Right(Either::Right(config.clone())),
+      CompletionConfig::Mistral { ref config } => Either::Left(Either::Right(config.clone())),
+      CompletionConfig::LlamaCpp { ref config } => Either::Right(Either::Left(config.clone())),
+      CompletionConfig::Ollama { ref config } => Either::Right(Either::Right(Either::Left(config.clone()))),
+      CompletionConfig::OpenAICompletions {
+        ref config,
+        ref template,
+      } => Either::Right(Either::Right(Either::Right((template.clone(), config.clone())))),
     }
   }
 
@@ -164,6 +199,8 @@ impl Config {
 #[cfg(test)]
 mod tests {
   use std::sync::Arc;
+
+  use ramhorns::Template;
 
   use crate::config::{CompletionConfig, Config, GenerationConfig, ModelConfig, RewriteConfig};
 
@@ -188,19 +225,21 @@ mod tests {
     }
     "#;
     let config = Config {
-      infill: CompletionConfig::Mistral(Arc::new(ModelConfig {
-        url: "https://api.mistral.ai/v1/fim/completions".to_string(),
-        api_key_env: "MISTRAL_API_KEY".to_string(),
-        generation_config: GenerationConfig {
-          model: "codestral-latest".to_string(),
-          temperature: Some(0.7),
-          top_p: Some(0.95),
-          max_tokens: Some(1024),
-          min_tokens: Some(1),
-          stop: vec!["\n\n".to_string()],
-          seed: Some(42),
-        },
-      })),
+      infill: CompletionConfig::Mistral {
+        config: Arc::new(ModelConfig {
+          url: "https://api.mistral.ai/v1/fim/completions".to_string(),
+          api_key_env: "MISTRAL_API_KEY".to_string(),
+          generation_config: GenerationConfig {
+            model: "codestral-latest".to_string(),
+            temperature: Some(0.7),
+            top_p: Some(0.95),
+            max_tokens: Some(1024),
+            min_tokens: Some(1),
+            stop: vec!["\n\n".to_string()],
+            seed: Some(42),
+          },
+        }),
+      },
       rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
@@ -225,19 +264,21 @@ mod tests {
     }
     "#;
     let config = Config {
-      infill: CompletionConfig::LlamaCpp(Arc::new(ModelConfig {
-        url: "http://localhost:8080/infill".to_string(),
-        api_key_env: Some("LLAMA_CPP_API_KEY".to_string()),
-        generation_config: GenerationConfig {
-          model: None,
-          temperature: Some(0.7),
-          top_p: None,
-          max_tokens: Some(1024),
-          min_tokens: None,
-          stop: vec!["<|file_separator|>".to_string()],
-          seed: Some(42),
-        },
-      })),
+      infill: CompletionConfig::LlamaCpp {
+        config: Arc::new(ModelConfig {
+          url: "http://localhost:8080/infill".to_string(),
+          api_key_env: Some("LLAMA_CPP_API_KEY".to_string()),
+          generation_config: GenerationConfig {
+            model: None,
+            temperature: Some(0.7),
+            top_p: None,
+            max_tokens: Some(1024),
+            min_tokens: None,
+            stop: vec!["<|file_separator|>".to_string()],
+            seed: Some(42),
+          },
+        }),
+      },
       rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
@@ -263,19 +304,65 @@ mod tests {
      }
      "#;
     let config = Config {
-      infill: CompletionConfig::Ollama(Arc::new(ModelConfig {
-        url: "http://localhost:11434/api/generate".to_string(),
-        api_key_env: Some("OLLAMA_API_KEY".to_string()),
-        generation_config: GenerationConfig {
-          model: "qwen2.5-coder".to_string(),
-          temperature: Some(0.7),
-          top_p: None,
-          min_tokens: None,
-          max_tokens: Some(1024),
-          stop: vec![],
-          seed: Some(42),
+      infill: CompletionConfig::Ollama {
+        config: Arc::new(ModelConfig {
+          url: "http://localhost:11434/api/generate".to_string(),
+          api_key_env: Some("OLLAMA_API_KEY".to_string()),
+          generation_config: GenerationConfig {
+            model: "qwen2.5-coder".to_string(),
+            temperature: Some(0.7),
+            top_p: None,
+            min_tokens: None,
+            max_tokens: Some(1024),
+            stop: vec![],
+            seed: Some(42),
+          },
+        }),
+      },
+      rewrite: RewriteConfig::default(),
+    };
+    let parsed: Config = serde_json::from_str(str).unwrap();
+    assert_eq!(parsed, config);
+  }
+
+  #[test]
+  fn openai_completions_infill_config() {
+    let str = r#"
+    {
+      "infill": {
+        "provider": "OpenAICompletions",
+        "config": {
+          "url": "http://localhost:8080/v1/completions",
+          "api_key_env": "OPENAI_API_KEY",
+          "model": "qwen2.5-coder",
+          "temperature": 0.7,
+          "max_tokens": 1024,
+          "stop": [],
+          "seed": 42
         },
-      })),
+        "template": "<|fim_prefix|>{{ prefix }}<|fim_suffix|>{{ suffix }}<|fim_middle|>"
+      }
+    }
+    "#;
+    let config = Config {
+      infill: CompletionConfig::OpenAICompletions {
+        config: Arc::new(ModelConfig {
+          url: "http://localhost:8080/v1/completions".to_string(),
+          api_key_env: Some("OPENAI_API_KEY".to_string()),
+          generation_config: GenerationConfig {
+            model: Some("qwen2.5-coder".to_string()),
+            temperature: Some(0.7),
+            top_p: None,
+            max_tokens: Some(1024),
+            min_tokens: None,
+            stop: vec![],
+            seed: Some(42),
+          },
+        }),
+        template: Arc::new(super::TemplateConfig(
+          Template::new("<|fim_prefix|>{{ prefix }}<|fim_suffix|>{{ suffix }}<|fim_middle|>").unwrap(),
+        )),
+      },
       rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
