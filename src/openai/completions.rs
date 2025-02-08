@@ -42,7 +42,6 @@ struct OpenAICompletionsContent {
   suffix: String,
 }
 
-// TODO: pass RopeSliceContent instead of string
 impl Infill for (Arc<TemplateConfig>, Arc<ModelConfig<OpenAI>>) {
   async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
     let request = client.post(&self.1.url);
