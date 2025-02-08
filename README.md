@@ -13,10 +13,10 @@ trusted companion to help you with your sorcery!
 ## Features
 
 - **Inline Code Completions**: Get context-aware code suggestions using LLMs
-  - [x] [llama.cpp infill API](https://github.com/ggerganov/llama.cpp/tree/master/examples/server#post-infill-for-code-infilling)
-  - [x] [Ollama generate API](https://github.com/ollama/ollama/blob/v0.5.4/docs/api.md#generate-a-completion)
-  - [x] [Mistral FIM API](https://docs.mistral.ai/api/#tag/fim)
-  - [ ] [OpanAI completions API](https://platform.openai.com/docs/api-reference/completions)
+  - [llama.cpp infill API](https://github.com/ggerganov/llama.cpp/tree/master/examples/server#post-infill-for-code-infilling)
+  - [Ollama generate API](https://github.com/ollama/ollama/blob/v0.5.4/docs/api.md#generate-a-completion)
+  - [Mistral FIM API](https://docs.mistral.ai/api/#tag/fim)
+  - [OpanAI completions API](https://platform.openai.com/docs/api-reference/completions)
 - **Code Actions**: Automate routine tasks, such as code refactoring
   - Rewrite command
 
@@ -48,6 +48,7 @@ The configuration options for each provider are as follows:
     "provider": "LlamaCpp",
     "config": {
       "url": "http://localhost:8080/infill",
+      "api_key_env": "LLAMA_CPP_API_KEY",
       "temperature": 0.7,
       "max_tokens": 1024,
       "stop": ["<|file_separator|>"],
@@ -64,8 +65,6 @@ using the following command:
 llama-server -m codegemma-2b-Q6_K.gguf -c 0 -t 8 -ngl 19 -fa --port 8080
 ```
 
-API key can be specified via `LLAMA_CPP_API_KEY` environment variable.
-
 #### Ollama
 
 ```json
@@ -74,6 +73,7 @@ API key can be specified via `LLAMA_CPP_API_KEY` environment variable.
     "provider": "Ollama",
     "config": {
       "url": "http://localhost:11434/api/generate",
+      "api_key_env": "OLLAMA_API_KEY",
       "model": "qwen2.5-coder",
       "temperature": 0.7,
       "max_tokens": 1024,
@@ -91,7 +91,6 @@ using the following command:
 ollama serve
 ```
 
-API key can be specified via `OLLAMA_API_KEY` environment variable. Note that
 Ollama does not natively support the Bearer authentication scheme. However, this
 functionality can be added using a reverse proxy.
 
@@ -103,6 +102,7 @@ functionality can be added using a reverse proxy.
     "provider": "Mistral",
     "config": {
       "url": "https://api.mistral.ai/v1/fim/completions",
+      "api_key_env": "MISTRAL_API_KEY",
       "model": "codestral-latest",
       "temperature": 0.7,
       "top_p": 0.95,
@@ -115,7 +115,29 @@ functionality can be added using a reverse proxy.
 }
 ```
 
-API key can be specified via `MISTRAL_API_KEY` environment variable.
+#### OpanAI completions
+
+If your provider doesn't support the infill API, you can use the OpenAI completions
+API instead. This allows you to manually specify a template that the model can use
+to handle infill requests.
+
+```json
+{
+  "infill": {
+    "provider": "OpenAICompletions",
+    "config": {
+      "url": "http://localhost:8080/v1/completions",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "qwen2.5-coder",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "stop": [],
+      "seed": 42
+    },
+    "template": "<|fim_prefix|>{{ prefix }}<|fim_suffix|>{{ suffix }}<|fim_middle|>"
+  }
+}
+```
 
 ### Code actions
 
