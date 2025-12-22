@@ -24,12 +24,12 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "rustls-tls-native-roots",
 ] }
-tokio = { version = "1.42", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.48", features = ["rt", "rt-multi-thread", "macros"] }
 log = "0.4"
 env_logger = "0.11"
 dashmap = "6.1"
 clap = { version = "4.5", features = ["cargo"] }
-either = "1.13"
+either = "1.15"
 crossbeam-channel = "0.5"
 ramhorns = "1.0"
-derive_more = { version = "1.0", features = ["from"] }
+derive_more = { version = "2.1", features = ["from"] }
