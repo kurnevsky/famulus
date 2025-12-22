@@ -17,8 +17,6 @@ trusted companion to help you with your sorcery!
   - [Ollama generate API](https://github.com/ollama/ollama/blob/v0.5.4/docs/api.md#generate-a-completion)
   - [Mistral FIM API](https://docs.mistral.ai/api/#tag/fim)
   - [OpanAI completions API](https://platform.openai.com/docs/api-reference/completions)
-- **Code Actions**: Automate routine tasks, such as code refactoring
-  - Rewrite command
 
 ## Getting Started
 
@@ -139,61 +137,6 @@ to handle infill requests.
 }
 ```
 
-### Code actions
-
-In order to use code actions, you need to configure a model with an
-OpenAI-compatible chat API:
-
-```json
-{
-  "rewrite": {
-    "model_config": {
-      "provider": "OpenAI",
-      "config": {
-        "url": "https://api.groq.com/openai/v1/chat/completions",
-        "api_key_env": "OPENAI_API_KEY",
-        "model": "llama-3.3-70b-versatile",
-        "temperature": 0.7,
-        "max_tokens": 1024,
-        "stop": [],
-        "seed": 42
-      }
-    },
-    "messages": [
-      {
-        "role": "system",
-        "content": "You provide the modified code directly without any surrounding explanation or context, and do not enclose it within a code block."
-      },
-      {
-        "role": "user",
-        "content": "{{ prompt }}\n\n```\n{{ selection }}\n```"
-      }
-    ]
-  }
-}
-```
-
-Available variables for the template:
-
-- `prompt`: user prompt
-- `selection`: selected code
-- `prefix`: part of code above the selection
-- `suffix`: part of code below the selection
-
-#### Commands
-
-The true power of LLMs lies in their ability to generate and transform code
-based on user input. However, the LSP protocol has a limitation - it doesn't
-natively support arbitrary user input. Fortunately, it can be extended using
-custom commands, which is exactly how code actions are implemented.
-
-##### Rewrite command
-
-You can use the `famulus-rewrite` command to ask the LLM to rewrite a part of
-your code. This command takes two arguments: the location of the selection you
-want to rewrite, and a user prompt. Once run, it will replace your selected code
-with the LLM's rewritten version.
-
 ## Contributing
 
 We welcome contributions to Famulus! If you're interested in helping out, please:
@@ -205,4 +148,5 @@ We welcome contributions to Famulus! If you're interested in helping out, please
 ## License
 
 Famulus is licensed under the [AGPL-3.0+ License](./LICENSE.txt). By
-contributing to or using Famulus, you agree to the terms and conditions of this license.
+contributing to or using Famulus, you agree to the terms and conditions of this
+license.

@@ -4,7 +4,7 @@ use either::Either;
 use ramhorns::Template;
 use serde::{de::Error, Deserialize};
 
-use crate::{chat::Chat, infill::Infill};
+use crate::infill::Infill;
 
 pub trait Provider {
   type Model: for<'a> Deserialize<'a> + Clone + PartialEq + Debug;
@@ -146,32 +146,10 @@ pub enum CompletionConfig {
   },
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, Default)]
-#[serde(tag = "provider", content = "config")]
-pub enum ChatModelConfig {
-  #[default]
-  Empty,
-  OpenAI(Arc<ModelConfig<OpenAI>>),
-}
-
-#[derive(Clone, PartialEq, Debug, Deserialize)]
-pub struct MessageConfig {
-  pub role: String,
-  pub content: String,
-}
-
-#[derive(Clone, PartialEq, Debug, Deserialize, Default)]
-pub struct RewriteConfig {
-  pub model_config: ChatModelConfig,
-  pub messages: Vec<MessageConfig>,
-}
-
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct Config {
   #[serde(default)]
   pub infill: CompletionConfig,
-  #[serde(default)]
-  pub rewrite: RewriteConfig,
 }
 
 impl Config {
@@ -187,13 +165,6 @@ impl Config {
       } => Either::Right(Either::Right(Either::Right((template.clone(), config.clone())))),
     }
   }
-
-  pub fn get_rewrite(&self) -> impl Chat + Clone + Send {
-    match self.rewrite.model_config {
-      ChatModelConfig::Empty => Either::Left(()),
-      ChatModelConfig::OpenAI(ref config) => Either::Right(config.clone()),
-    }
-  }
 }
 
 #[cfg(test)]
@@ -202,7 +173,7 @@ mod tests {
 
   use ramhorns::Template;
 
-  use crate::config::{CompletionConfig, Config, GenerationConfig, ModelConfig, RewriteConfig};
+  use crate::config::{CompletionConfig, Config, GenerationConfig, ModelConfig};
 
   #[test]
   fn mistral_infill_config() {
@@ -240,7 +211,6 @@ mod tests {
           },
         }),
       },
-      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -279,7 +249,6 @@ mod tests {
           },
         }),
       },
-      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -319,7 +288,6 @@ mod tests {
           },
         }),
       },
-      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -363,7 +331,6 @@ mod tests {
           Template::new("<|fim_prefix|>{{ prefix }}<|fim_suffix|>{{ suffix }}<|fim_middle|>").unwrap(),
         )),
       },
-      rewrite: RewriteConfig::default(),
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
@@ -401,29 +368,6 @@ mod tests {
     "#;
     let config = Config {
       infill: CompletionConfig::default(),
-      rewrite: RewriteConfig {
-        model_config: super::ChatModelConfig::OpenAI(Arc::new(ModelConfig {
-          url: "https://api.groq.com/openai/v1/chat/completions".to_string(),
-          api_key_env: Some("OPENAI_API_KEY".to_string()),
-          generation_config: GenerationConfig {
-            model: Some("llama-3.3-70b-versatile".to_string()),
-            temperature: Some(0.7),
-            top_p: None,
-            max_tokens: Some(1024),
-            min_tokens: None,
-            stop: vec![],
-            seed: Some(42),
-          },
-        })),
-        messages: vec![super::MessageConfig {
-          role: "system".to_string(),
-          content: "You provide the modified code directly without any surrounding explanation or context, and do not enclose it within a code block.".to_string(),
-        },
-        super::MessageConfig {
-          role: "user".to_string(),
-          content: "{{ prompt }}\n\n```\n{{ selection }}\n```".to_string(),
-        }],
-      },
     };
     let parsed: Config = serde_json::from_str(str).unwrap();
     assert_eq!(parsed, config);
