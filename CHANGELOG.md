@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.5
+
+* Add generic OpenAI-compatible completions API
+* Remove `rewrite` command
+
 ## 0.0.4
 
 * Add `rewrite` command
