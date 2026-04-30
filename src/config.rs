@@ -4,7 +4,7 @@ use either::Either;
 use ramhorns::Template;
 use serde::{de::Error, Deserialize};
 
-use crate::infill::Infill;
+use crate::{copilot::infill::CopilotInfill, infill::Infill};
 
 pub trait Provider {
   type Model: for<'a> Deserialize<'a> + Clone + PartialEq + Debug;
@@ -81,6 +81,19 @@ impl Provider for OpenAI {
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
+pub struct CopilotConfig {
+  pub api_key_env: String,
+  #[serde(default)]
+  pub temperature: Option<f64>,
+  #[serde(default)]
+  pub top_p: Option<f64>,
+  #[serde(default)]
+  pub max_tokens: Option<u32>,
+  #[serde(default)]
+  pub stop: Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct GenerationConfig<P: Provider> {
   pub model: P::Model,
   #[serde(default)]
@@ -144,6 +157,9 @@ pub enum CompletionConfig {
     config: Arc<ModelConfig<OpenAI>>,
     template: Arc<TemplateConfig>,
   },
+  Copilot {
+    config: Arc<CopilotConfig>,
+  },
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
@@ -162,7 +178,13 @@ impl Config {
       CompletionConfig::OpenAICompletions {
         ref config,
         ref template,
-      } => Either::Right(Either::Right(Either::Right((template.clone(), config.clone())))),
+      } => Either::Right(Either::Right(Either::Right(Either::Left((
+        template.clone(),
+        config.clone(),
+      ))))),
+      CompletionConfig::Copilot { ref config } => Either::Right(Either::Right(Either::Right(Either::Right(Arc::new(
+        CopilotInfill::new(config.clone()),
+      ))))),
     }
   }
 }
@@ -173,7 +195,7 @@ mod tests {
 
   use ramhorns::Template;
 
-  use crate::config::{CompletionConfig, Config, GenerationConfig, ModelConfig};
+  use crate::config::{CompletionConfig, Config, CopilotConfig, GenerationConfig, ModelConfig};
 
   #[test]
   fn mistral_infill_config() {
@@ -330,6 +352,36 @@ mod tests {
         template: Arc::new(super::TemplateConfig(
           Template::new("<|fim_prefix|>{{ prefix }}<|fim_suffix|>{{ suffix }}<|fim_middle|>").unwrap(),
         )),
+      },
+    };
+    let parsed: Config = serde_json::from_str(str).unwrap();
+    assert_eq!(parsed, config);
+  }
+
+  #[test]
+  fn copilot_infill_config() {
+    let str = r#"
+    {
+      "infill": {
+        "provider": "Copilot",
+        "config": {
+          "api_key_env": "COPILOT_TOKEN",
+          "temperature": 0.0,
+          "max_tokens": 1024,
+          "stop": ["\n\n"]
+        }
+      }
+    }
+    "#;
+    let config = Config {
+      infill: CompletionConfig::Copilot {
+        config: Arc::new(CopilotConfig {
+          api_key_env: "COPILOT_TOKEN".to_string(),
+          temperature: Some(0.0),
+          top_p: None,
+          max_tokens: Some(1024),
+          stop: vec!["\n\n".to_string()],
+        }),
       },
     };
     let parsed: Config = serde_json::from_str(str).unwrap();

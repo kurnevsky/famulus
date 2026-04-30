@@ -10,14 +10,15 @@ pub trait Infill {
     client: Arc<Client>,
     prefix: String,
     suffix: String,
+    language_id: String,
   ) -> impl Future<Output = Result<impl Iterator<Item = String>>> + Send;
 }
 
 impl<A: Infill + Sync, B: Infill + Sync> Infill for Either<A, B> {
-  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
+  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String, language_id: String) -> Result<impl Iterator<Item = String>> {
     match self {
-      Either::Left(a) => a.infill(client, prefix, suffix).await.map(Either::Left),
-      Either::Right(b) => b.infill(client, prefix, suffix).await.map(Either::Right),
+      Either::Left(a) => a.infill(client, prefix, suffix, language_id).await.map(Either::Left),
+      Either::Right(b) => b.infill(client, prefix, suffix, language_id).await.map(Either::Right),
     }
   }
 }
@@ -28,8 +29,9 @@ impl<I: Infill> Infill for &I {
     client: Arc<Client>,
     prefix: String,
     suffix: String,
+    language_id: String,
   ) -> impl Future<Output = Result<impl Iterator<Item = String>>> + Send {
-    (*self).infill(client, prefix, suffix)
+    (*self).infill(client, prefix, suffix, language_id)
   }
 }
 
@@ -39,8 +41,9 @@ impl<I: Infill> Infill for Arc<I> {
     client: Arc<Client>,
     prefix: String,
     suffix: String,
+    language_id: String,
   ) -> impl Future<Output = Result<impl Iterator<Item = String>>> + Send {
-    self.as_ref().infill(client, prefix, suffix)
+    self.as_ref().infill(client, prefix, suffix, language_id)
   }
 }
 
@@ -50,6 +53,7 @@ impl Infill for () {
     _client: Arc<Client>,
     _prefix: String,
     _suffix: String,
+    _language_id: String,
   ) -> Result<impl Iterator<Item = String>> {
     Ok(iter::empty())
   }

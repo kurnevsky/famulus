@@ -45,7 +45,7 @@ struct InfillResponse {
 }
 
 impl Infill for ModelConfig<Mistral> {
-  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String) -> Result<impl Iterator<Item = String>> {
+  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String, _language_id: String) -> Result<impl Iterator<Item = String>> {
     let response = client
       .post(&self.url)
       .bearer_auth(&env::var(&self.api_key_env)?)

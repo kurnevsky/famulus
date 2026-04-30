@@ -1,4 +1,5 @@
 mod config;
+mod copilot;
 mod infill;
 mod llama_cpp;
 mod mistral;
@@ -12,7 +13,6 @@ use clap::Command;
 use config::Config;
 use crossbeam_channel::Sender;
 use dashmap::DashMap;
-use derive_more::From;
 use infill::Infill;
 use lsp_server::{Connection, ErrorCode, Message, RequestId, Response as LspResponse};
 use lsp_types::{
@@ -27,10 +27,11 @@ use reqwest::Client;
 use ropey::Rope;
 use tokio::task::JoinHandle;
 
-#[derive(From, Debug)]
+#[derive(Debug)]
 struct Document {
   rope: Rope,
   version: i32,
+  language_id: String,
 }
 
 #[derive(Debug)]
@@ -60,6 +61,7 @@ impl State {
       + params.text_document_position.position.character as usize;
     let prefix = document.rope.slice(..index).to_string();
     let suffix = document.rope.slice(index..).to_string();
+    let language_id = document.language_id.clone();
 
     let infill = self.config.get_infill();
     let client = self.client.clone();
@@ -67,7 +69,7 @@ impl State {
     let tasks = self.tasks.clone();
     let request_id_c = request_id.clone();
     let future = async move {
-      let completions = infill.infill(client, prefix, suffix).await;
+      let completions = infill.infill(client, prefix, suffix, language_id).await;
       match completions {
         Result::Ok(completions) => {
           tasks.remove(&request_id_c);
@@ -115,6 +117,7 @@ impl State {
       Document {
         rope,
         version: params.text_document.version,
+        language_id: params.text_document.language_id,
       },
     );
     Ok(())
@@ -138,11 +141,17 @@ impl State {
         document.version = params.text_document.version;
       } else {
         let rope = Rope::from_str(&change.text);
+        let language_id = self
+          .documents
+          .get(&params.text_document.uri)
+          .map(|d| d.language_id.clone())
+          .unwrap_or_default();
         self.documents.insert(
           params.text_document.uri.clone(),
           Document {
             rope,
             version: params.text_document.version,
+            language_id,
           },
         );
       }
