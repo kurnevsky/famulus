@@ -6,7 +6,7 @@ license = "AGPL-3.0+"
 description = "LSP server integrating LLMs"
 keywords = ["lsp", "llm", "ai"]
 repository = "https://github.com/kurnevsky/famulus"
-edition = "2021"
+edition = "2024"
 include = ["**/*.rs", "Cargo.toml", "README.md"]
 readme = "README.md"
 

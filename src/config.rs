@@ -169,7 +169,7 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn get_infill(&self) -> impl Infill + Clone + Send {
+  pub fn get_infill(&self) -> impl Infill + Clone + Send + 'static {
     match self.infill {
       CompletionConfig::Empty => Either::Left(Either::Left(())),
       CompletionConfig::Mistral { ref config } => Either::Left(Either::Right(config.clone())),
