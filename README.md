@@ -16,6 +16,7 @@ trusted companion to help you with your sorcery!
   - [llama.cpp infill API](https://github.com/ggerganov/llama.cpp/tree/master/examples/server#post-infill-for-code-infilling)
   - [Ollama generate API](https://github.com/ollama/ollama/blob/v0.5.4/docs/api.md#generate-a-completion)
   - [Mistral FIM API](https://docs.mistral.ai/api/#tag/fim)
+  - GitHub Copilot
   - [OpanAI completions API](https://platform.openai.com/docs/api-reference/completions)
 
 ## Getting Started
@@ -108,6 +109,23 @@ functionality can be added using a reverse proxy.
       "min_tokens": 1,
       "stop": ["\n\n"],
       "seed": 42
+    }
+  }
+}
+```
+
+#### GitHub Copilot
+
+```json
+{
+  "infill": {
+    "provider": "Copilot",
+    "config": {
+      "api_key_env": "COPILOT_API_KEY",
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "max_tokens": 1024,
+      "stop": ["\n\n"]
     }
   }
 }
