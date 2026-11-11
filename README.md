@@ -131,7 +131,7 @@ functionality can be added using a reverse proxy.
 }
 ```
 
-#### OpanAI completions
+#### OpenAI completions
 
 If your provider doesn't support the infill API, you can use the OpenAI completions
 API instead. This allows you to manually specify a template that the model can use

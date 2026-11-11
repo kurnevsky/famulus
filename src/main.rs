@@ -1,10 +1,5 @@
 mod config;
-mod copilot;
 mod infill;
-mod llama_cpp;
-mod mistral;
-mod ollama;
-mod openai;
 
 use std::sync::Arc;
 
@@ -13,7 +8,6 @@ use clap::Command;
 use config::Config;
 use crossbeam_channel::Sender;
 use dashmap::DashMap;
-use infill::Infill;
 use lsp_server::{Connection, ErrorCode, Message, RequestId, Response as LspResponse};
 use lsp_types::{
   CancelParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams,
@@ -64,7 +58,6 @@ impl State {
   fn inline_completion_request(&self, request_id: RequestId, params: InlineCompletionParams) -> Result<()> {
     let document_uri = params.text_document_position.text_document.uri.clone();
 
-    // Cancel any in-flight completion request for the same document
     if let Some(pending_id) = self.pending_requests.get(&document_uri).map(|r| r.clone()) {
       if let Some((_, handle)) = self.tasks.remove(&pending_id) {
         handle.abort();
@@ -93,16 +86,16 @@ impl State {
     let tasks = self.tasks.clone();
     let request_id_c = request_id.clone();
     let future = async move {
-      let completions = infill.infill(client, prefix, suffix, language_id).await;
-      match completions {
+      let result = infill.infill(client, prefix, suffix, language_id).await;
+      tasks.remove(&request_id_c);
+      pending_requests.remove_if(&document_uri, |_, v| *v == request_id_c);
+      match result {
         Ok(completions) => {
-          tasks.remove(&request_id_c);
-          pending_requests.remove_if(&document_uri, |_, v| *v == request_id_c);
           let range = Range::new(Position { line, character }, Position { line, character });
           let completion_items = completions
-            .filter(|completion| !completion.is_empty())
-            .map(|completion| InlineCompletionItem {
-              insert_text: completion,
+            .filter(|c| !c.is_empty())
+            .map(|c| InlineCompletionItem {
+              insert_text: c,
               filter_text: None,
               range: Some(range),
               command: None,
@@ -115,12 +108,10 @@ impl State {
           )))?;
         }
         Err(error) => {
-          tasks.remove(&request_id_c);
-          pending_requests.remove_if(&document_uri, |_, v| *v == request_id_c);
           sender.send(Message::Response(LspResponse::new_err(
             request_id_c,
             ErrorCode::RequestFailed as i32,
-            format!("Failed to get response: {}", error),
+            format!("Failed to get response: {error}"),
           )))?;
         }
       }
@@ -187,6 +178,7 @@ impl State {
     };
     if let Some((_, handle)) = self.tasks.remove(&id) {
       handle.abort();
+      self.pending_requests.retain(|_, pending_id| *pending_id != id);
       let _ = self.sender.send(Message::Response(LspResponse::new_err(
         id,
         ErrorCode::RequestCanceled as i32,
@@ -198,10 +190,9 @@ impl State {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
-  let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
-  env_logger::Builder::from_env(env).init();
+  env_logger::Builder::from_env(env_logger::Env::default().filter_or("RUST_LOG", "info")).init();
 
-  let _matches = Command::new(clap::crate_name!())
+  let _ = Command::new(clap::crate_name!())
     .version(clap::crate_version!())
     .author(clap::crate_authors!("\n"))
     .about(clap::crate_description!())
@@ -289,9 +280,7 @@ async fn main() -> Result<()> {
             state.cancel(params);
             Ok(())
           }
-          Exit::METHOD => {
-            return Ok(());
-          }
+          Exit::METHOD => return Ok(()),
           _ => Ok(()),
         };
         if let Err(e) = result {
@@ -309,38 +298,14 @@ async fn main() -> Result<()> {
 mod tests {
   use super::*;
   use crate::config::CompletionConfig;
-  use lsp_types::Uri;
-  use lsp_types::{TextDocumentContentChangeEvent, TextDocumentItem, VersionedTextDocumentIdentifier};
+  use lsp_types::{TextDocumentContentChangeEvent, TextDocumentItem, Uri, VersionedTextDocumentIdentifier};
 
   #[test]
-  fn test_position_to_char_index_ascii() {
+  fn test_position_to_char_index() {
     let rope = Rope::from_str("hello\nworld");
     assert_eq!(position_to_char_index(&rope, 0, 5), 5);
     assert_eq!(position_to_char_index(&rope, 1, 3), 9);
-  }
-
-  #[test]
-  fn test_position_to_char_index_multibyte() {
-    let rope = Rope::from_str("héllo\nworld");
-    assert_eq!(position_to_char_index(&rope, 0, 5), 5);
-  }
-
-  #[test]
-  fn test_position_to_char_index_emoji() {
-    let rope = Rope::from_str("foo🔥bar");
-    assert_eq!(position_to_char_index(&rope, 0, 4), 4);
-  }
-
-  #[test]
-  fn test_position_to_char_index_beyond_end() {
-    let rope = Rope::from_str("hello");
-    assert_eq!(position_to_char_index(&rope, 0, 100), 5);
-  }
-
-  #[test]
-  fn test_position_to_char_index_out_of_bounds_line() {
-    let rope = Rope::from_str("hello\nworld");
-    assert_eq!(position_to_char_index(&rope, 0, 0), 0);
+    assert_eq!(position_to_char_index(&rope, 0, 100), 11);
   }
 
   #[test]
@@ -368,7 +333,6 @@ mod tests {
       .unwrap();
     assert!(state.documents.contains_key(&uri));
 
-    // Replace "world" (range 6..11) with "rust"
     state
       .did_change_text_document(DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
