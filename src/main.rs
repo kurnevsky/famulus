@@ -1,7 +1,7 @@
 mod config;
 mod infill;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow};
 use clap::Command;
@@ -21,6 +21,10 @@ use reqwest::Client;
 use ropey::Rope;
 use tokio::task::JoinHandle;
 
+const DEBOUNCE_MS: u64 = 150;
+const MAX_PREFIX_CHARS: usize = 4000;
+const MAX_SUFFIX_CHARS: usize = 1000;
+
 fn position_to_char_index(rope: &Rope, line: u32, character: u32) -> usize {
   let line_char_start = rope.line_to_char(line as usize);
   let target_utf16 = rope.char_to_utf16_cu(line_char_start) + character as usize;
@@ -34,6 +38,12 @@ fn position_to_char_index(rope: &Rope, line: u32, character: u32) -> usize {
       char_idx
     }
   }
+}
+
+fn slice_context(rope: &Rope, index: usize) -> (String, String) {
+  let start = index.saturating_sub(MAX_PREFIX_CHARS);
+  let end = (index + MAX_SUFFIX_CHARS).min(rope.len_chars());
+  (rope.slice(start..index).to_string(), rope.slice(index..end).to_string())
 }
 
 #[derive(Debug)]
@@ -50,7 +60,7 @@ struct State {
   config: Config,
   documents: Arc<DashMap<Uri, Document>>,
   tasks: Arc<DashMap<RequestId, JoinHandle<Result<()>>>>,
-  pending_requests: Arc<DashMap<Uri, RequestId>>,
+  pending_requests: Arc<DashMap<Uri, (RequestId, tokio::task::AbortHandle)>>,
 }
 
 impl State {
@@ -58,15 +68,15 @@ impl State {
   fn inline_completion_request(&self, request_id: RequestId, params: InlineCompletionParams) -> Result<()> {
     let document_uri = params.text_document_position.text_document.uri.clone();
 
-    if let Some(pending_id) = self.pending_requests.get(&document_uri).map(|r| r.clone()) {
-      if let Some((_, handle)) = self.tasks.remove(&pending_id) {
-        handle.abort();
-      }
+    if let Some((_, (pending_id, handle))) = self.pending_requests.remove(&document_uri) {
+      handle.abort();
+      let _ = self.tasks.remove(&pending_id);
+      let _ = self.sender.send(Message::Response(LspResponse::new_err(
+        pending_id,
+        ErrorCode::RequestCanceled as i32,
+        "Request superseded".to_string(),
+      )));
     }
-    self.pending_requests.insert(document_uri.clone(), request_id.clone());
-
-    let pending_requests = self.pending_requests.clone();
-    let document_uri = document_uri.clone();
 
     let document = self
       .documents
@@ -76,19 +86,22 @@ impl State {
     let line = params.text_document_position.position.line;
     let character = params.text_document_position.position.character;
     let index = position_to_char_index(&document.rope, line, character);
-    let prefix = document.rope.slice(..index).to_string();
-    let suffix = document.rope.slice(index..).to_string();
+    let (prefix, suffix) = slice_context(&document.rope, index);
     let language_id = document.language_id.clone();
+    drop(document);
 
     let infill = self.config.get_infill();
     let client = self.client.clone();
     let sender = self.sender.clone();
     let tasks = self.tasks.clone();
+    let pending_requests = self.pending_requests.clone();
     let request_id_c = request_id.clone();
+    let document_uri_c = document_uri.clone();
     let future = async move {
+      tokio::time::sleep(Duration::from_millis(DEBOUNCE_MS)).await;
       let result = infill.infill(client, prefix, suffix, language_id).await;
       tasks.remove(&request_id_c);
-      pending_requests.remove_if(&document_uri, |_, v| *v == request_id_c);
+      pending_requests.remove_if(&document_uri_c, |_, (id, _)| *id == request_id_c);
       match result {
         Ok(completions) => {
           let range = Range::new(Position { line, character }, Position { line, character });
@@ -118,6 +131,9 @@ impl State {
       Ok(())
     };
     let handle = tokio::task::spawn(future);
+    self
+      .pending_requests
+      .insert(document_uri, (request_id.clone(), handle.abort_handle()));
     self.tasks.insert(request_id, handle);
     Ok(())
   }
@@ -178,7 +194,7 @@ impl State {
     };
     if let Some((_, handle)) = self.tasks.remove(&id) {
       handle.abort();
-      self.pending_requests.retain(|_, pending_id| *pending_id != id);
+      self.pending_requests.retain(|_, (pending_id, _)| *pending_id != id);
       let _ = self.sender.send(Message::Response(LspResponse::new_err(
         id,
         ErrorCode::RequestCanceled as i32,

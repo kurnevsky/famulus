@@ -115,7 +115,7 @@ async fn ollama(
       model: config.generation_config.model.as_deref().unwrap_or(""),
       prompt: prefix,
       suffix,
-      stream: false,
+      stream: true,
       options: OllamaOptions {
         temperature: config.generation_config.temperature,
         stop: &config.generation_config.stop,
@@ -124,10 +124,35 @@ async fn ollama(
       },
     })
     .send()
-    .await?
-    .json::<OllamaResponse>()
     .await?;
-  Ok(Box::new(iter::once(response.response)))
+
+  let mut stream = response.bytes_stream();
+  let mut buf = String::new();
+  let mut completion = String::new();
+  while let Some(chunk) = stream.next().await {
+    buf.push_str(std::str::from_utf8(chunk?.as_ref())?);
+    while let Some(newline) = buf.find('\n') {
+      let line = buf[..newline].trim_end_matches('\r').to_string();
+      buf = buf[newline + 1..].to_string();
+      if line.trim().is_empty() {
+        continue;
+      }
+      let chunk: OllamaStreamChunk = serde_json::from_str(&line)?;
+      if let Some(text) = chunk.response {
+        completion.push_str(&text);
+      }
+      if chunk.done {
+        return Ok(Box::new(iter::once(completion)));
+      }
+    }
+  }
+  if !buf.trim().is_empty()
+    && let Ok(chunk) = serde_json::from_str::<OllamaStreamChunk>(buf.trim())
+    && let Some(text) = chunk.response
+  {
+    completion.push_str(&text);
+  }
+  Ok(Box::new(iter::once(completion)))
 }
 
 async fn openai(
@@ -296,8 +321,11 @@ struct OllamaOptions<'a> {
 }
 
 #[derive(Deserialize)]
-struct OllamaResponse {
-  response: String,
+struct OllamaStreamChunk {
+  #[serde(default)]
+  response: Option<String>,
+  #[serde(default)]
+  done: bool,
 }
 
 #[derive(Content)]
