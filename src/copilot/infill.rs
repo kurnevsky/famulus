@@ -4,7 +4,7 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -119,7 +119,13 @@ impl CopilotInfill {
 }
 
 impl Infill for CopilotInfill {
-  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String, language_id: String) -> Result<impl Iterator<Item = String>> {
+  async fn infill(
+    &self,
+    client: Arc<Client>,
+    prefix: String,
+    suffix: String,
+    language_id: String,
+  ) -> Result<impl Iterator<Item = String>> {
     let token = self.get_token(&client).await?;
     let request_id = Uuid::new_v4().to_string();
     let prompt_tokens = prefix.split_whitespace().count();
