@@ -15,7 +15,13 @@ pub trait Infill {
 }
 
 impl<A: Infill + Sync, B: Infill + Sync> Infill for Either<A, B> {
-  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String, language_id: String) -> Result<impl Iterator<Item = String>> {
+  async fn infill(
+    &self,
+    client: Arc<Client>,
+    prefix: String,
+    suffix: String,
+    language_id: String,
+  ) -> Result<impl Iterator<Item = String>> {
     match self {
       Either::Left(a) => a.infill(client, prefix, suffix, language_id).await.map(Either::Left),
       Either::Right(b) => b.infill(client, prefix, suffix, language_id).await.map(Either::Right),

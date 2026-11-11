@@ -17,7 +17,7 @@ trusted companion to help you with your sorcery!
   - [Ollama generate API](https://github.com/ollama/ollama/blob/v0.5.4/docs/api.md#generate-a-completion)
   - [Mistral FIM API](https://docs.mistral.ai/api/#tag/fim)
   - GitHub Copilot
-  - [OpanAI completions API](https://platform.openai.com/docs/api-reference/completions)
+  - [OpenAI completions API](https://platform.openai.com/docs/api-reference/completions)
 
 ## Getting Started
 

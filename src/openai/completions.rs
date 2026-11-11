@@ -43,7 +43,13 @@ struct OpenAICompletionsContent {
 }
 
 impl Infill for (Arc<TemplateConfig>, Arc<ModelConfig<OpenAI>>) {
-  async fn infill(&self, client: Arc<Client>, prefix: String, suffix: String, _language_id: String) -> Result<impl Iterator<Item = String>> {
+  async fn infill(
+    &self,
+    client: Arc<Client>,
+    prefix: String,
+    suffix: String,
+    _language_id: String,
+  ) -> Result<impl Iterator<Item = String>> {
     let request = client.post(&self.1.url);
     let request = if let Some(ref api_key_env) = self.1.api_key_env {
       request.bearer_auth(&env::var(api_key_env)?)
@@ -53,7 +59,7 @@ impl Infill for (Arc<TemplateConfig>, Arc<ModelConfig<OpenAI>>) {
     let response = request
       .json(&OpenAICompletionsRequest {
         model: &self.1.generation_config.model,
-        prompt: self.0 .0.render(&OpenAICompletionsContent { prefix, suffix }),
+        prompt: self.0.0.render(&OpenAICompletionsContent { prefix, suffix }),
         temperature: self.1.generation_config.temperature,
         top_p: self.1.generation_config.top_p,
         max_tokens: self.1.generation_config.max_tokens,

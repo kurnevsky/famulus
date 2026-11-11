@@ -2,7 +2,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use either::Either;
 use ramhorns::Template;
-use serde::{de::Error, Deserialize};
+use serde::{Deserialize, de::Error};
 
 use crate::{copilot::infill::CopilotInfill, infill::Infill};
 
