@@ -28,9 +28,7 @@ log = "0.4"
 env_logger = "0.11"
 dashmap = "6.1"
 clap = { version = "4.5", features = ["cargo"] }
-either = "1.15"
 crossbeam-channel = "0.5"
 ramhorns = "1.0"
-derive_more = { version = "2.1", features = ["from"] }
 futures-util = { version = "0.3", default-features = false }
 uuid = { version = "1.23", features = ["v4"] }
